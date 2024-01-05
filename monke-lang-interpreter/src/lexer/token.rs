@@ -1,3 +1,7 @@
+use std::str::FromStr;
+
+use crate::error::InterpreterError;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
     Illegal,
@@ -7,6 +11,12 @@ pub enum Token {
     // Operators
     Assign,
     Plus,
+    Minus,
+    Bang,
+    Asterisk,
+    Slash,
+    Lt,
+    Gt,
     // Delimiters
     Comma,
     Semicolon,
@@ -17,4 +27,28 @@ pub enum Token {
     // Keywords
     Function,
     Let,
+    True,
+    False,
+    If,
+    Else,
+    Return,
+}
+
+impl FromStr for Token {
+    type Err = InterpreterError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "fn" => Ok(Token::Function),
+            "let" => Ok(Token::Let),
+            "true" => Ok(Token::True),
+            "false" => Ok(Token::False),
+            "if" => Ok(Token::If),
+            "else" => Ok(Token::Else),
+            "return" => Ok(Token::Return),
+            ident => Err(InterpreterError::new(format!(
+                "Display not implemented for identifier {ident}",
+            ))),
+        }
+    }
 }
