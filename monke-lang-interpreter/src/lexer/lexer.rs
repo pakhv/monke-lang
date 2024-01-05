@@ -214,5 +214,7 @@ if (5 < 10) {
         for expected_token in expected_tokens {
             assert_eq!(lexer.next_token().unwrap(), expected_token);
         }
+
+        assert_eq!(lexer.next_token(), None);
     }
 }
