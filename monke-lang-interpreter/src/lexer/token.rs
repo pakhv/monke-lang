@@ -17,6 +17,8 @@ pub enum Token {
     Slash,
     Lt,
     Gt,
+    Eq,
+    Ne,
     // Delimiters
     Comma,
     Semicolon,

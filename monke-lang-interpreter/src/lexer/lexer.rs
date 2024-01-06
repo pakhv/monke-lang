@@ -26,7 +26,6 @@ impl Lexer {
         match self.ch {
             None => None,
             Some(ch) => match ch {
-                '=' => self.advance_and_return(Token::Assign),
                 ';' => self.advance_and_return(Token::Semicolon),
                 '(' => self.advance_and_return(Token::Lparen),
                 ')' => self.advance_and_return(Token::Rparen),
@@ -35,11 +34,12 @@ impl Lexer {
                 ',' => self.advance_and_return(Token::Comma),
                 '+' => self.advance_and_return(Token::Plus),
                 '-' => self.advance_and_return(Token::Minus),
-                '!' => self.advance_and_return(Token::Bang),
                 '*' => self.advance_and_return(Token::Asterisk),
                 '/' => self.advance_and_return(Token::Slash),
                 '<' => self.advance_and_return(Token::Lt),
                 '>' => self.advance_and_return(Token::Gt),
+                '=' => self.peeked_token('=', Token::Eq, Token::Assign),
+                '!' => self.peeked_token('=', Token::Ne, Token::Bang),
                 ch if is_letter(ch) => {
                     let ident = self.read_while(&is_letter);
                     Some(lookup_ident(ident))
@@ -61,6 +61,25 @@ impl Lexer {
     fn advance_and_return(&mut self, token: Token) -> Option<Token> {
         self.advance();
         Some(token)
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.input.get(self.read_position).copied()
+    }
+
+    fn peeked_token(
+        &mut self,
+        expected: char,
+        matched_token: Token,
+        not_matched_token: Token,
+    ) -> Option<Token> {
+        let token = match self.peek() {
+            Some(ch) if ch == expected => self.advance_and_return(matched_token),
+            None | Some(_) => Some(not_matched_token),
+        };
+
+        self.advance();
+        token
     }
 
     fn read_while(&mut self, condition: &dyn Fn(char) -> bool) -> String {
@@ -97,15 +116,15 @@ impl Lexer {
 }
 
 fn is_digit(ch: char) -> bool {
-    match ch as u8 {
-        b'0'..=b'9' => true,
+    match ch {
+        '0'..='9' => true,
         _ => false,
     }
 }
 
 fn is_letter(ch: char) -> bool {
-    match ch as u8 {
-        b'a'..=b'z' | b'A'..=b'Z' | b'_' => true,
+    match ch {
+        'a'..='z' | 'A'..='Z' | '_' => true,
         _ => false,
     }
 }
@@ -139,7 +158,10 @@ if (5 < 10) {
     return true;
 } else {
     return false;
-}"#;
+}
+
+10 == 10;
+10 != 9;"#;
 
         let mut lexer = Lexer::new(String::from(input));
 
@@ -209,6 +231,14 @@ if (5 < 10) {
             Token::False,
             Token::Semicolon,
             Token::Rbrace,
+            Token::Int(String::from("10")),
+            Token::Eq,
+            Token::Int(String::from("10")),
+            Token::Semicolon,
+            Token::Int(String::from("10")),
+            Token::Ne,
+            Token::Int(String::from("9")),
+            Token::Semicolon,
         ];
 
         for expected_token in expected_tokens {
