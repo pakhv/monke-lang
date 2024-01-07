@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::error::InterpreterError;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
     Illegal,
     // Identifiers + literals
