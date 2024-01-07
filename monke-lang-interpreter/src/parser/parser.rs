@@ -1,7 +1,7 @@
 use crate::lexer::{lexer::Lexer, token::Token};
 
 use super::super::error::InterpreterError;
-use super::ast::{Expression, LetStatement, Program, Statement};
+use super::ast::{Expression, LetStatement, Program, ReturnStatement, Statement};
 
 #[derive(Debug)]
 pub struct Parser {
@@ -39,6 +39,7 @@ impl Parser {
         match &self.cur_token {
             Some(token) => match token {
                 Token::Let => Ok(self.parse_let_statement()?),
+                Token::Return => Ok(self.parse_return_statement()?),
                 _ => Err(String::from(
                     "unable to parse statement, couldn't determine statement type",
                 )),
@@ -90,6 +91,27 @@ impl Parser {
         }))
     }
 
+    fn parse_return_statement(&mut self) -> InterpreterError<Box<dyn Statement>> {
+        loop {
+            self.next_token();
+
+            match &self.cur_token {
+                Some(Token::Semicolon) => break,
+                Some(_) => (),
+                None => {
+                    return Err(String::from(
+                        "unable to parse let statement, couldn't find end of statement",
+                    ))
+                }
+            }
+        }
+
+        Ok(Box::new(ReturnStatement {
+            token: Token::Return,
+            return_value: Expression {},
+        }))
+    }
+
     fn expect_peek(&mut self, token: Token) -> bool {
         match &self.peek_token {
             Some(t) if t == &token => {
@@ -113,11 +135,11 @@ mod tests {
     use super::Parser;
     use crate::{
         lexer::{lexer::Lexer, token::Token},
-        parser::ast::LetStatement,
+        parser::ast::{LetStatement, ReturnStatement},
     };
 
     #[test]
-    fn test_let_statements() {
+    fn let_statements_test() {
         let input = r#"let x = 5;
 let y = 10;
 let foobar = 838383;"#;
@@ -125,6 +147,10 @@ let foobar = 838383;"#;
         let mut parser = Parser::new(lexer);
 
         let program = parser.parse_program();
+
+        if let Err(err) = &program {
+            println!("{err}");
+        }
 
         assert!(program.is_ok());
         let program = program.unwrap();
@@ -144,6 +170,37 @@ let foobar = 838383;"#;
                 .expect("expected let statement");
 
             assert!(let_statement_valid(let_statement, expected_token));
+        }
+    }
+
+    #[test]
+    fn return_statements_test() {
+        let input = r#"
+return 5;
+return 10;
+return 993322;
+"#;
+        let lexer = Lexer::new(String::from(input));
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program();
+
+        if let Err(err) = &program {
+            println!("{err}");
+        }
+
+        assert!(program.is_ok());
+        let program = program.unwrap();
+
+        assert!(program.statements.len() == 3);
+
+        for statement in program.statements {
+            let return_statement = statement
+                .as_any()
+                .downcast_ref::<ReturnStatement>()
+                .expect("expected let statement");
+
+            assert_eq!(return_statement.token, Token::Return);
         }
     }
 

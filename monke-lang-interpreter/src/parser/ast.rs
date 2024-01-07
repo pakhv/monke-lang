@@ -25,3 +25,15 @@ impl Statement for LetStatement {
         self
     }
 }
+
+#[derive(Debug)]
+pub struct ReturnStatement {
+    pub token: Token,
+    pub return_value: Expression,
+}
+
+impl Statement for ReturnStatement {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
