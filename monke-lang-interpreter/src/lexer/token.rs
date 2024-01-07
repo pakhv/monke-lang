@@ -1,7 +1,5 @@
 use std::str::FromStr;
 
-use crate::error::InterpreterError;
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
     Illegal,
@@ -37,7 +35,7 @@ pub enum Token {
 }
 
 impl FromStr for Token {
-    type Err = InterpreterError;
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -48,9 +46,7 @@ impl FromStr for Token {
             "if" => Ok(Token::If),
             "else" => Ok(Token::Else),
             "return" => Ok(Token::Return),
-            ident => Err(InterpreterError::new(format!(
-                "Display not implemented for identifier {ident}",
-            ))),
+            ident => Err(format!("Display not implemented for identifier {ident}")),
         }
     }
 }

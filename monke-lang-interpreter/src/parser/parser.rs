@@ -1,6 +1,7 @@
 use crate::lexer::{lexer::Lexer, token::Token};
 
-use super::ast::{Program, Statement};
+use super::super::error::InterpreterError;
+use super::ast::{Expression, LetStatement, Program, Statement};
 
 #[derive(Debug)]
 pub struct Parser {
@@ -21,31 +22,83 @@ impl Parser {
         }
     }
 
-    pub fn parse_program(&mut self) -> Program {
-        let program = Program { statements: vec![] };
+    pub fn parse_program(&mut self) -> InterpreterError<Program> {
+        let mut program = Program { statements: vec![] };
 
         while self.cur_token.is_some() {
-            self.parse_statement();
+            let statement = self.parse_statement()?;
+            program.statements.push(statement);
 
             self.next_token();
         }
 
-        program
+        Ok(program)
     }
 
-    fn parse_statement(&self) -> Box<dyn Statement> {
+    fn parse_statement(&mut self) -> InterpreterError<Box<dyn Statement>> {
         match &self.cur_token {
             Some(token) => match token {
-                Token::Let => todo!(),
-                _ => todo!(),
+                Token::Let => Ok(self.parse_let_statement()?),
+                _ => Err(String::from("unable to determine statement type")),
             },
-            None => todo!(),
+            None => Err(String::from(
+                "unable to parse statement, there is no tokens",
+            )),
         }
     }
 
     fn next_token(&mut self) {
         self.cur_token = self.peek_token.clone();
         self.peek_token = self.lexer.next_token();
+    }
+
+    fn parse_let_statement(&mut self) -> InterpreterError<Box<dyn Statement>> {
+        if !self.expect_peek(Token::Ident(String::new())) {
+            return Err(String::from(
+                "unable to parse let statement, identifier expected",
+            ));
+        }
+
+        let statement_name = self.cur_token.clone().unwrap();
+
+        if !self.expect_peek(Token::Assign) {
+            return Err(String::from(
+                "unable to parse let statement, assign token expected",
+            ));
+        }
+
+        loop {
+            self.next_token();
+
+            match &self.cur_token {
+                Some(Token::Semicolon) => break,
+                Some(_) => (),
+                None => return Err(String::from("couldn't find end of statement")),
+            }
+        }
+
+        Ok(Box::new(LetStatement {
+            token: Token::Let,
+            name: statement_name,
+            value: Expression {},
+        }))
+    }
+
+    fn expect_peek(&mut self, token: Token) -> bool {
+        match &self.peek_token {
+            Some(t) if t == &token => {
+                self.next_token();
+                true
+            }
+            Some(Token::Ident(_)) | Some(Token::Int(_)) => match token {
+                Token::Ident(_) | Token::Int(_) => {
+                    self.next_token();
+                    true
+                }
+                _ => false,
+            },
+            None | Some(_) => false,
+        }
     }
 }
 
@@ -67,12 +120,15 @@ let foobar = 838383;"#;
 
         let program = parser.parse_program();
 
+        assert!(program.is_ok());
+        let program = program.unwrap();
+
         assert!(program.statements.len() == 3);
 
         let expected_identifiers = vec![
             Token::Ident(String::from("x")),
-            Token::Ident(String::from("foobar")),
             Token::Ident(String::from("y")),
+            Token::Ident(String::from("foobar")),
         ];
 
         for (expected_token, statement) in expected_identifiers.iter().zip(program.statements) {
