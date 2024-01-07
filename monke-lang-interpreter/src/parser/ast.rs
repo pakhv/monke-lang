@@ -1,6 +1,16 @@
 use crate::lexer::token::Token;
 use std::{any::Any, fmt::Debug};
 
+pub trait Node {
+    fn pretty_print(&self) -> String;
+}
+
+pub trait Statement: Debug + Node {
+    fn as_any(&self) -> &dyn Any;
+}
+
+pub trait Expression: Debug + Node {}
+
 #[derive(Debug)]
 pub struct Program {
     pub statements: Vec<Box<dyn Statement>>,
@@ -17,16 +27,6 @@ impl Node for Program {
         buffer
     }
 }
-
-pub trait Node {
-    fn pretty_print(&self) -> String;
-}
-
-pub trait Statement: Debug + Node {
-    fn as_any(&self) -> &dyn Any;
-}
-
-pub trait Expression: Debug + Node {}
 
 #[derive(Debug)]
 pub struct Identifier {
