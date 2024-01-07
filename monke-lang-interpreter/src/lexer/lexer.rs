@@ -38,8 +38,8 @@ impl Lexer {
                 '/' => self.advance_and_return(Token::Slash),
                 '<' => self.advance_and_return(Token::Lt),
                 '>' => self.advance_and_return(Token::Gt),
-                '=' => self.peeked_token('=', Token::Eq, Token::Assign),
-                '!' => self.peeked_token('=', Token::Ne, Token::Bang),
+                '=' => self.peek_conditional('=', Token::Eq, Token::Assign),
+                '!' => self.peek_conditional('=', Token::Ne, Token::Bang),
                 ch if is_letter(ch) => {
                     let ident = self.read_while(&is_letter);
                     Some(lookup_ident(ident))
@@ -67,7 +67,7 @@ impl Lexer {
         self.input.get(self.read_position).copied()
     }
 
-    fn peeked_token(
+    fn peek_conditional(
         &mut self,
         expected: char,
         matched_token: Token,

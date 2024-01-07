@@ -39,7 +39,9 @@ impl Parser {
         match &self.cur_token {
             Some(token) => match token {
                 Token::Let => Ok(self.parse_let_statement()?),
-                _ => Err(String::from("unable to determine statement type")),
+                _ => Err(String::from(
+                    "unable to parse statement, couldn't determine statement type",
+                )),
             },
             None => Err(String::from(
                 "unable to parse statement, there is no tokens",
@@ -73,7 +75,11 @@ impl Parser {
             match &self.cur_token {
                 Some(Token::Semicolon) => break,
                 Some(_) => (),
-                None => return Err(String::from("couldn't find end of statement")),
+                None => {
+                    return Err(String::from(
+                        "unable to parse let statement, couldn't find end of statement",
+                    ))
+                }
             }
         }
 
