@@ -1,7 +1,6 @@
-use crate::lexer::{lexer::Lexer, token::Token};
-
 use super::super::error::InterpreterError;
-use super::ast::{Expression, LetStatement, Program, ReturnStatement, Statement};
+use super::ast::{Identifier, LetStatement, Program, ReturnStatement, Statement};
+use crate::lexer::{lexer::Lexer, token::Token};
 
 #[derive(Debug)]
 pub struct Parser {
@@ -87,7 +86,9 @@ impl Parser {
         Ok(Box::new(LetStatement {
             token: Token::Let,
             name: statement_name,
-            value: Expression {},
+            value: Box::new(Identifier {
+                token: Token::Illegal,
+            }),
         }))
     }
 
@@ -108,7 +109,9 @@ impl Parser {
 
         Ok(Box::new(ReturnStatement {
             token: Token::Return,
-            return_value: Expression {},
+            return_value: Box::new(Identifier {
+                token: Token::Illegal,
+            }),
         }))
     }
 
@@ -135,7 +138,7 @@ mod tests {
     use super::Parser;
     use crate::{
         lexer::{lexer::Lexer, token::Token},
-        parser::ast::{LetStatement, ReturnStatement},
+        parser::ast::{Identifier, LetStatement, Node, Program, ReturnStatement},
     };
 
     #[test]
@@ -202,6 +205,24 @@ return 993322;
 
             assert_eq!(return_statement.token, Token::Return);
         }
+    }
+
+    #[test]
+    fn pretty_print_test() {
+        let program = Program {
+            statements: vec![Box::new(LetStatement {
+                token: Token::Let,
+                name: Token::Ident(String::from("myVar")),
+                value: Box::new(Identifier {
+                    token: Token::Ident(String::from("anotherVar")),
+                }),
+            })],
+        };
+
+        assert_eq!(
+            program.pretty_print(),
+            String::from("let myVar = anotherVar;")
+        );
     }
 
     fn let_statement_valid(statement: &LetStatement, expected_token: &Token) -> bool {
