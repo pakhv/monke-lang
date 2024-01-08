@@ -58,6 +58,24 @@ impl Node for Identifier {
 }
 
 #[derive(Debug)]
+pub struct IntegerLiteral {
+    pub token: Token,
+    pub value: i64,
+}
+
+impl Expression for IntegerLiteral {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Node for IntegerLiteral {
+    fn pretty_print(&self) -> String {
+        self.token.to_string()
+    }
+}
+
+#[derive(Debug)]
 pub struct LetStatement {
     pub token: Token,
     pub name: Identifier,

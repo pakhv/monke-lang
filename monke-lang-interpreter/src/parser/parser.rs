@@ -1,5 +1,7 @@
 use super::super::error::InterpreterResult;
-use super::ast::{Expression, Identifier, LetStatement, Program, ReturnStatement, Statement};
+use super::ast::{
+    Expression, Identifier, IntegerLiteral, LetStatement, Program, ReturnStatement, Statement,
+};
 use crate::lexer::{lexer::Lexer, token::Token};
 use crate::parser::ast::{ExpressionStatement, ExpressionType};
 
@@ -10,8 +12,8 @@ pub struct Parser {
     peek_token: Option<Token>,
 }
 
-type ParsePrefixFn = fn(&Parser) -> Box<dyn Expression>;
-type ParseInfixFn = fn(&Parser, Box<dyn Expression>) -> Box<dyn Expression>;
+type ParsePrefixFn = fn(&Parser) -> InterpreterResult<Box<dyn Expression>>;
+type ParseInfixFn = fn(&Parser, Box<dyn Expression>) -> InterpreterResult<Box<dyn Expression>>;
 
 impl Parser {
     pub fn new(mut lexer: Lexer) -> Self {
@@ -138,9 +140,9 @@ impl Parser {
     }
 
     fn parse_expression(&self, expression_type: usize) -> InterpreterResult<Box<dyn Expression>> {
-        let prefix = self.get_prefix_fn();
+        let prefix = self.get_prefix_fn()?;
 
-        Ok(prefix(&self))
+        Ok(prefix(&self)?)
     }
 
     fn expect_peek(&mut self, token: Token) -> bool {
@@ -160,20 +162,39 @@ impl Parser {
         }
     }
 
-    fn get_prefix_fn(&self) -> ParsePrefixFn {
+    fn get_prefix_fn(&self) -> InterpreterResult<ParsePrefixFn> {
         match &self.cur_token {
             Some(t) => match t {
-                Token::Ident(_) => Self::parse_identifier,
+                Token::Ident(_) => Ok(Self::parse_identifier),
+                Token::Int(_) => Ok(Self::parse_integer_literal),
                 _ => todo!(),
             },
-            None => todo!(),
+            None => Err(String::from(
+                "unable to parse expression, unknown prefix expression type",
+            )),
         }
     }
 
-    fn parse_identifier(parser: &Parser) -> Box<dyn Expression> {
-        Box::new(Identifier {
+    fn parse_identifier(parser: &Parser) -> InterpreterResult<Box<dyn Expression>> {
+        Ok(Box::new(Identifier {
             token: parser.cur_token.clone().unwrap(),
-        })
+        }))
+    }
+
+    fn parse_integer_literal(parser: &Parser) -> InterpreterResult<Box<dyn Expression>> {
+        let token = parser.cur_token.clone().unwrap();
+
+        let value = if let Token::Int(ref number_str) = token {
+            number_str
+                .parse::<i64>()
+                .map_err(|_| String::from("unable to parse integer literal, isize cast error"))?
+        } else {
+            return Err(String::from(
+                "unable to parse integer literal, wrong token found",
+            ));
+        };
+
+        Ok(Box::new(IntegerLiteral { token, value }))
     }
 }
 
@@ -183,7 +204,8 @@ mod tests {
     use crate::{
         lexer::{lexer::Lexer, token::Token},
         parser::ast::{
-            ExpressionStatement, Identifier, LetStatement, Node, Program, ReturnStatement,
+            ExpressionStatement, Identifier, IntegerLiteral, LetStatement, Node, Program,
+            ReturnStatement,
         },
     };
 
@@ -304,6 +326,40 @@ return 993322;
             .expect("expected identifier expresssion");
 
         assert_eq!(identifier.token, Token::Ident(String::from("foobar")));
+    }
+
+    #[test]
+    fn integer_literal_expression_test() {
+        let input = "5;";
+        let lexer = Lexer::new(String::from(input));
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program();
+
+        if let Err(err) = &program {
+            println!("{err}");
+        }
+
+        assert!(program.is_ok());
+        let program = program.unwrap();
+
+        assert!(program.statements.len() == 1);
+        let expression_statement = program
+            .statements
+            .first()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<ExpressionStatement>()
+            .expect("expected expression statement");
+
+        let integer_literal = expression_statement
+            .expression
+            .as_any()
+            .downcast_ref::<IntegerLiteral>()
+            .expect("expected integer literal expresssion");
+
+        assert_eq!(integer_literal.token, Token::Int(String::from("5")));
+        assert_eq!(integer_literal.value, 5);
     }
 
     fn let_statement_valid(statement: &LetStatement, expected_token: &Token) -> bool {
