@@ -1,3 +1,3 @@
 use std::result;
 
-pub type InterpreterError<T> = result::Result<T, String>;
+pub type InterpreterResult<T> = result::Result<T, String>;

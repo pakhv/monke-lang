@@ -9,7 +9,19 @@ pub trait Statement: Debug + Node {
     fn as_any(&self) -> &dyn Any;
 }
 
-pub trait Expression: Debug + Node {}
+pub trait Expression: Debug + Node {
+    fn as_any(&self) -> &dyn Any;
+}
+
+pub enum ExpressionType {
+    Lowest = 1,
+    Equals,      // ==
+    LessGreater, // > or <
+    Sum,         // +
+    Product,     // *
+    Prefix,      // -X or !X
+    Call,        // myFunction(X
+}
 
 #[derive(Debug)]
 pub struct Program {
@@ -33,7 +45,11 @@ pub struct Identifier {
     pub token: Token,
 }
 
-impl Expression for Identifier {}
+impl Expression for Identifier {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 impl Node for Identifier {
     fn pretty_print(&self) -> String {

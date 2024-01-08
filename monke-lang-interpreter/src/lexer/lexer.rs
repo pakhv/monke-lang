@@ -41,11 +41,11 @@ impl Lexer {
                 '=' => self.peek_conditional('=', Token::Eq, Token::Assign),
                 '!' => self.peek_conditional('=', Token::Ne, Token::Bang),
                 ch if is_letter(ch) => {
-                    let ident = self.read_while(&is_letter);
+                    let ident = self.read_while(is_letter);
                     Some(lookup_ident(ident))
                 }
                 ch if is_digit(ch) => {
-                    let number = self.read_while(&is_digit);
+                    let number = self.read_while(is_digit);
                     Some(Token::Int(number))
                 }
                 ch => panic!("Unknown character {ch}"),
@@ -82,7 +82,7 @@ impl Lexer {
         token
     }
 
-    fn read_while(&mut self, condition: &dyn Fn(char) -> bool) -> String {
+    fn read_while(&mut self, condition: fn(char) -> bool) -> String {
         let mut buffer = String::new();
 
         while let Some(ch) = self.ch {

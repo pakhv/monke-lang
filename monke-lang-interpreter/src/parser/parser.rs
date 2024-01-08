@@ -1,6 +1,7 @@
-use super::super::error::InterpreterError;
-use super::ast::{Identifier, LetStatement, Program, ReturnStatement, Statement};
+use super::super::error::InterpreterResult;
+use super::ast::{Expression, Identifier, LetStatement, Program, ReturnStatement, Statement};
 use crate::lexer::{lexer::Lexer, token::Token};
+use crate::parser::ast::{ExpressionStatement, ExpressionType};
 
 #[derive(Debug)]
 pub struct Parser {
@@ -8,6 +9,9 @@ pub struct Parser {
     cur_token: Option<Token>,
     peek_token: Option<Token>,
 }
+
+type ParsePrefixFn = fn(&Parser) -> Box<dyn Expression>;
+type ParseInfixFn = fn(&Parser, Box<dyn Expression>) -> Box<dyn Expression>;
 
 impl Parser {
     pub fn new(mut lexer: Lexer) -> Self {
@@ -21,7 +25,7 @@ impl Parser {
         }
     }
 
-    pub fn parse_program(&mut self) -> InterpreterError<Program> {
+    pub fn parse_program(&mut self) -> InterpreterResult<Program> {
         let mut program = Program { statements: vec![] };
 
         while self.cur_token.is_some() {
@@ -34,14 +38,12 @@ impl Parser {
         Ok(program)
     }
 
-    fn parse_statement(&mut self) -> InterpreterError<Box<dyn Statement>> {
+    fn parse_statement(&mut self) -> InterpreterResult<Box<dyn Statement>> {
         match &self.cur_token {
             Some(token) => match token {
                 Token::Let => Ok(self.parse_let_statement()?),
                 Token::Return => Ok(self.parse_return_statement()?),
-                _ => Err(String::from(
-                    "unable to parse statement, couldn't determine statement type",
-                )),
+                _ => Ok(self.parse_expression_statement()?),
             },
             None => Err(String::from(
                 "unable to parse statement, there is no tokens",
@@ -54,7 +56,7 @@ impl Parser {
         self.peek_token = self.lexer.next_token();
     }
 
-    fn parse_let_statement(&mut self) -> InterpreterError<Box<dyn Statement>> {
+    fn parse_let_statement(&mut self) -> InterpreterResult<Box<dyn Statement>> {
         if !self.expect_peek(Token::Ident(String::new())) {
             return Err(String::from(
                 "unable to parse let statement, identifier expected",
@@ -94,7 +96,7 @@ impl Parser {
         }))
     }
 
-    fn parse_return_statement(&mut self) -> InterpreterError<Box<dyn Statement>> {
+    fn parse_return_statement(&mut self) -> InterpreterResult<Box<dyn Statement>> {
         loop {
             self.next_token();
 
@@ -117,6 +119,30 @@ impl Parser {
         }))
     }
 
+    fn parse_expression_statement(&mut self) -> InterpreterResult<Box<dyn Statement>> {
+        let cur_token = self.cur_token.clone().unwrap();
+        let statement_expression = self.parse_expression(ExpressionType::Lowest as usize)?;
+
+        if self
+            .peek_token
+            .as_ref()
+            .is_some_and(|t| t == &Token::Semicolon)
+        {
+            self.next_token();
+        }
+
+        Ok(Box::new(ExpressionStatement {
+            token: cur_token,
+            expression: statement_expression,
+        }))
+    }
+
+    fn parse_expression(&self, expression_type: usize) -> InterpreterResult<Box<dyn Expression>> {
+        let prefix = self.get_prefix_fn();
+
+        Ok(prefix(&self))
+    }
+
     fn expect_peek(&mut self, token: Token) -> bool {
         match &self.peek_token {
             Some(t) if t == &token => {
@@ -133,6 +159,22 @@ impl Parser {
             None | Some(_) => false,
         }
     }
+
+    fn get_prefix_fn(&self) -> ParsePrefixFn {
+        match &self.cur_token {
+            Some(t) => match t {
+                Token::Ident(_) => Self::parse_identifier,
+                _ => todo!(),
+            },
+            None => todo!(),
+        }
+    }
+
+    fn parse_identifier(parser: &Parser) -> Box<dyn Expression> {
+        Box::new(Identifier {
+            token: parser.cur_token.clone().unwrap(),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -140,7 +182,9 @@ mod tests {
     use super::Parser;
     use crate::{
         lexer::{lexer::Lexer, token::Token},
-        parser::ast::{Identifier, LetStatement, Node, Program, ReturnStatement},
+        parser::ast::{
+            ExpressionStatement, Identifier, LetStatement, Node, Program, ReturnStatement,
+        },
     };
 
     #[test]
@@ -227,6 +271,39 @@ return 993322;
             program.pretty_print(),
             String::from("let myVar = anotherVar;")
         );
+    }
+
+    #[test]
+    fn identifier_expression_test() {
+        let input = "foobar;";
+        let lexer = Lexer::new(String::from(input));
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program();
+
+        if let Err(err) = &program {
+            println!("{err}");
+        }
+
+        assert!(program.is_ok());
+        let program = program.unwrap();
+
+        assert!(program.statements.len() == 1);
+        let expression_statement = program
+            .statements
+            .first()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<ExpressionStatement>()
+            .expect("expected expression statement");
+
+        let identifier = expression_statement
+            .expression
+            .as_any()
+            .downcast_ref::<Identifier>()
+            .expect("expected identifier expresssion");
+
+        assert_eq!(identifier.token, Token::Ident(String::from("foobar")));
     }
 
     fn let_statement_valid(statement: &LetStatement, expected_token: &Token) -> bool {
