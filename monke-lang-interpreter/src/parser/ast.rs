@@ -44,7 +44,7 @@ impl Node for Identifier {
 #[derive(Debug)]
 pub struct LetStatement {
     pub token: Token,
-    pub name: Token,
+    pub name: Identifier,
     pub value: Box<dyn Expression>,
 }
 
@@ -61,7 +61,7 @@ impl Node for LetStatement {
         buffer.push_str(&format!(
             "{} {} = {};",
             &self.token.to_string(),
-            &self.name.to_string(),
+            &self.name.pretty_print(),
             &self.value.pretty_print()
         ));
 

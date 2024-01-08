@@ -85,7 +85,9 @@ impl Parser {
 
         Ok(Box::new(LetStatement {
             token: Token::Let,
-            name: statement_name,
+            name: Identifier {
+                token: statement_name,
+            },
             value: Box::new(Identifier {
                 token: Token::Illegal,
             }),
@@ -212,7 +214,9 @@ return 993322;
         let program = Program {
             statements: vec![Box::new(LetStatement {
                 token: Token::Let,
-                name: Token::Ident(String::from("myVar")),
+                name: Identifier {
+                    token: Token::Ident(String::from("myVar")),
+                },
                 value: Box::new(Identifier {
                     token: Token::Ident(String::from("anotherVar")),
                 }),
@@ -230,7 +234,7 @@ return 993322;
             return false;
         }
 
-        if &statement.name != expected_token {
+        if &statement.name.token != expected_token {
             return false;
         }
 
