@@ -76,6 +76,24 @@ impl Node for IntegerLiteral {
 }
 
 #[derive(Debug)]
+pub struct PrefixExpression {
+    pub token: Token,
+    pub right: Box<dyn Expression>,
+}
+
+impl Expression for PrefixExpression {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Node for PrefixExpression {
+    fn pretty_print(&self) -> String {
+        format!("({}{})", self.token, self.right.pretty_print())
+    }
+}
+
+#[derive(Debug)]
 pub struct LetStatement {
     pub token: Token,
     pub name: Identifier,
