@@ -1,7 +1,7 @@
 use super::super::error::InterpreterResult;
 use super::ast::{
-    Expression, Identifier, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression,
-    Program, ReturnStatement, Statement,
+    Boolean, Expression, Identifier, InfixExpression, IntegerLiteral, LetStatement,
+    PrefixExpression, Program, ReturnStatement, Statement,
 };
 use crate::lexer::{lexer::Lexer, token::Token};
 use crate::parser::ast::{ExpressionStatement, ExpressionType};
@@ -183,6 +183,7 @@ impl Parser {
                 token if token == &Token::Minus || token == &Token::Bang => {
                     Ok(Self::parse_prefix_expression)
                 }
+                token if token == &Token::True || token == &Token::False => Ok(Self::parse_boolean),
                 _ => todo!(),
             },
             None => Err(String::from(
@@ -259,6 +260,16 @@ impl Parser {
             right,
         }))
     }
+
+    fn parse_boolean(parser: &mut Parser) -> InterpreterResult<Box<dyn Expression>> {
+        let cur_token = parser.cur_token.clone().unwrap();
+        let is_true = cur_token == Token::True;
+
+        Ok(Box::new(Boolean {
+            value: is_true,
+            token: cur_token,
+        }))
+    }
 }
 
 fn get_precedence(token: &Option<Token>) -> usize {
@@ -286,8 +297,8 @@ mod tests {
     use crate::{
         lexer::{lexer::Lexer, token::Token},
         parser::ast::{
-            ExpressionStatement, Identifier, InfixExpression, IntegerLiteral, LetStatement, Node,
-            PrefixExpression, Program, ReturnStatement,
+            Boolean, ExpressionStatement, Identifier, InfixExpression, IntegerLiteral,
+            LetStatement, Node, PrefixExpression, Program, ReturnStatement,
         },
     };
 
@@ -446,7 +457,7 @@ return 993322;
     }
 
     #[test]
-    fn prefix_expression_test() {
+    fn prefix_expression_test_num() {
         let expected_expressions = vec![("!5;", Token::Bang, 5), ("-15;", Token::Minus, 15)];
 
         for (input, expected_token, expected_number) in expected_expressions {
@@ -490,7 +501,54 @@ return 993322;
     }
 
     #[test]
-    fn infix_expression_test() {
+    fn prefix_expression_test_boolean() {
+        let expected_expressions = vec![
+            ("!true;", Token::Bang, true),
+            ("!false;", Token::Bang, false),
+        ];
+
+        for (input, expected_token, expected_number) in expected_expressions {
+            let lexer = Lexer::new(String::from(input));
+            let mut parser = Parser::new(lexer);
+
+            let program = parser.parse_program();
+
+            if let Err(err) = &program {
+                println!("{err}");
+            }
+
+            assert!(program.is_ok());
+            let program = program.unwrap();
+
+            assert!(program.statements.len() == 1);
+            let expression_statement = program
+                .statements
+                .first()
+                .unwrap()
+                .as_any()
+                .downcast_ref::<ExpressionStatement>()
+                .expect("expected expression statement");
+
+            let prefix_expression = expression_statement
+                .expression
+                .as_any()
+                .downcast_ref::<PrefixExpression>()
+                .expect("expected prefix expression");
+
+            assert_eq!(prefix_expression.token, expected_token);
+
+            let integer_literal = prefix_expression
+                .right
+                .as_any()
+                .downcast_ref::<Boolean>()
+                .expect("expected integer literal expression");
+
+            assert_eq!(integer_literal.value, expected_number);
+        }
+    }
+
+    #[test]
+    fn infix_expression_test_num() {
         let expected_expressions = vec![
             ("5 + 5;", 5, Token::Plus, 5),
             ("5 - 5;", 5, Token::Minus, 5),
@@ -549,6 +607,60 @@ return 993322;
     }
 
     #[test]
+    fn infix_expression_test_boolean() {
+        let expected_expressions = vec![
+            ("true == true", true, Token::Eq, true),
+            ("true != false", true, Token::Ne, false),
+            ("false == false", false, Token::Eq, false),
+        ];
+
+        for (input, left, expected_token, right) in expected_expressions {
+            let lexer = Lexer::new(String::from(input));
+            let mut parser = Parser::new(lexer);
+
+            let program = parser.parse_program();
+
+            if let Err(err) = &program {
+                println!("{err}");
+            }
+
+            assert!(program.is_ok());
+            let program = program.unwrap();
+
+            assert!(program.statements.len() == 1);
+            let expression_statement = program
+                .statements
+                .first()
+                .unwrap()
+                .as_any()
+                .downcast_ref::<ExpressionStatement>()
+                .expect("expected expression statement");
+
+            let infix_expression = expression_statement
+                .expression
+                .as_any()
+                .downcast_ref::<InfixExpression>()
+                .expect("expected infix expression");
+
+            assert_eq!(infix_expression.token, expected_token);
+
+            let left_integer_literal = infix_expression
+                .left
+                .as_any()
+                .downcast_ref::<Boolean>()
+                .expect("expected integer literal expression");
+            let right_integer_literal = infix_expression
+                .right
+                .as_any()
+                .downcast_ref::<Boolean>()
+                .expect("expected integer literal expression");
+
+            assert_eq!(left_integer_literal.value, left);
+            assert_eq!(right_integer_literal.value, right);
+        }
+    }
+
+    #[test]
     fn operator_precedence_test() {
         let expected_expressions = vec![
             ("-a * b", "((-a) * b)"),
@@ -570,7 +682,12 @@ return 993322;
                 "3 + 4 * 5 == 3 * 1 + 4 * 5",
                 "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
             ),
+            ("true", "true"),
+            ("false", "false"),
+            ("3 > 5 == false", "((3 > 5) == false)"),
+            ("3 < 5 == true", "((3 < 5) == true)"),
         ];
+
         for (input, expected) in expected_expressions {
             let lexer = Lexer::new(String::from(input));
             let mut parser = Parser::new(lexer);

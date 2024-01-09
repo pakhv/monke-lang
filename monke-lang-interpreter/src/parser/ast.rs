@@ -118,6 +118,24 @@ impl Node for InfixExpression {
 }
 
 #[derive(Debug)]
+pub struct Boolean {
+    pub token: Token,
+    pub value: bool,
+}
+
+impl Expression for Boolean {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Node for Boolean {
+    fn pretty_print(&self) -> String {
+        self.value.to_string()
+    }
+}
+
+#[derive(Debug)]
 pub struct LetStatement {
     pub token: Token,
     pub name: Identifier,
