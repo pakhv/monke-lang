@@ -184,6 +184,7 @@ impl Parser {
                     Ok(Self::parse_prefix_expression)
                 }
                 token if token == &Token::True || token == &Token::False => Ok(Self::parse_boolean),
+                Token::Lparen => Ok(Self::parse_grouped_expression),
                 _ => todo!(),
             },
             None => Err(String::from(
@@ -269,6 +270,19 @@ impl Parser {
             value: is_true,
             token: cur_token,
         }))
+    }
+
+    fn parse_grouped_expression(parser: &mut Parser) -> InterpreterResult<Box<dyn Expression>> {
+        parser.next_token();
+        let expr = parser.parse_expression(ExpressionType::Lowest as usize)?;
+
+        if !parser.expect_peek(Token::Rparen) {
+            return Err(String::from(
+                "unable to parse grouped expression, couldn't find closing parentheses",
+            ));
+        }
+
+        Ok(expr)
     }
 }
 
@@ -686,6 +700,11 @@ return 993322;
             ("false", "false"),
             ("3 > 5 == false", "((3 > 5) == false)"),
             ("3 < 5 == true", "((3 < 5) == true)"),
+            ("1 + (2 + 3) + 4", "((1 + (2 + 3)) + 4)"),
+            ("(5 + 5) * 2", "((5 + 5) * 2)"),
+            ("2 / (5 + 5)", "(2 / (5 + 5))"),
+            ("-(5 + 5)", "(-(5 + 5))"),
+            ("!(true == true)", "(!(true == true))"),
         ];
 
         for (input, expected) in expected_expressions {
