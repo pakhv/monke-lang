@@ -20,7 +20,7 @@ pub enum ExpressionType {
     Sum,         // +
     Product,     // *
     Prefix,      // -X or !X
-    Call,        // myFunction(X
+    Call,        // myFunction(X)
 }
 
 #[derive(Debug)]
@@ -90,6 +90,30 @@ impl Expression for PrefixExpression {
 impl Node for PrefixExpression {
     fn pretty_print(&self) -> String {
         format!("({}{})", self.token, self.right.pretty_print())
+    }
+}
+
+#[derive(Debug)]
+pub struct InfixExpression {
+    pub token: Token,
+    pub left: Box<dyn Expression>,
+    pub right: Box<dyn Expression>,
+}
+
+impl Expression for InfixExpression {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Node for InfixExpression {
+    fn pretty_print(&self) -> String {
+        format!(
+            "({} {} {})",
+            self.left.pretty_print(),
+            self.token,
+            self.right.pretty_print()
+        )
     }
 }
 
