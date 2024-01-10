@@ -166,6 +166,36 @@ impl Node for IfExpression {
 }
 
 #[derive(Debug)]
+pub struct FunctionLiteral {
+    pub token: Token,
+    pub parameters: Vec<Identifier>,
+    pub body: BlockStatement,
+}
+
+impl Expression for FunctionLiteral {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Node for FunctionLiteral {
+    fn pretty_print(&self) -> String {
+        let mut buffer = self.token.to_string();
+
+        let params = self
+            .parameters
+            .iter()
+            .map(|p| p.pretty_print())
+            .reduce(|acc, cur| format!("{acc}, {cur}"))
+            .unwrap_or(String::new());
+
+        buffer.push_str(&format!("({}){}", params, self.body.pretty_print()));
+
+        buffer
+    }
+}
+
+#[derive(Debug)]
 pub struct LetStatement {
     pub token: Token,
     pub name: Identifier,
@@ -251,10 +281,13 @@ impl Statement for BlockStatement {
 
 impl Node for BlockStatement {
     fn pretty_print(&self) -> String {
-        self.statements
+        let block = self
+            .statements
             .iter()
             .map(|s| s.pretty_print())
             .reduce(|acc, cur| format!("{acc} {cur}"))
-            .unwrap_or(String::from(""))
+            .unwrap_or(String::from(""));
+
+        format!("{{ {block} }}")
     }
 }

@@ -1,7 +1,8 @@
 use super::super::error::InterpreterResult;
 use super::ast::{
-    BlockStatement, Boolean, Expression, Identifier, IfExpression, InfixExpression, IntegerLiteral,
-    LetStatement, PrefixExpression, Program, ReturnStatement, Statement,
+    BlockStatement, Boolean, Expression, FunctionLiteral, Identifier, IfExpression,
+    InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
+    Statement,
 };
 use crate::lexer::{lexer::Lexer, token::Token};
 use crate::parser::ast::{ExpressionStatement, ExpressionType};
@@ -200,6 +201,7 @@ impl Parser {
                 token if token == &Token::True || token == &Token::False => Ok(Self::parse_boolean),
                 Token::Lparen => Ok(Self::parse_grouped_expression),
                 Token::If => Ok(Self::parse_if_expression),
+                Token::Function => Ok(Self::parse_function_literal),
                 _ => todo!(),
             },
             None => Err(String::from(
@@ -351,6 +353,80 @@ impl Parser {
             alternative,
         }))
     }
+
+    fn parse_function_literal(parser: &mut Parser) -> InterpreterResult<Box<dyn Expression>> {
+        let token = parser.cur_token.clone().unwrap();
+
+        if !parser.expect_peek(Token::Lparen) {
+            return Err(String::from(
+                "unable to parse function literal, couldn't find opening paretheses",
+            ));
+        }
+
+        let parameters = parser.parse_function_parameters()?;
+
+        if !parser.expect_peek(Token::Lbrace) {
+            return Err(String::from(
+                "unable to parse function literal, couldn't find opening brace",
+            ));
+        }
+
+        let body = parser.parse_block_statement()?;
+
+        Ok(Box::new(FunctionLiteral {
+            token,
+            parameters,
+            body,
+        }))
+    }
+
+    fn parse_function_parameters(&mut self) -> InterpreterResult<Vec<Identifier>> {
+        let mut identifiers = vec![];
+
+        if self
+            .peek_token
+            .as_ref()
+            .is_some_and(|t| t == &Token::Rparen)
+        {
+            self.next_token();
+            return Ok(identifiers);
+        }
+
+        self.next_token();
+
+        if self.cur_token.is_none() {
+            return Err(String::from(
+                "unable to parse function parameters, couldn't find identifier",
+            ));
+        }
+
+        identifiers.push(Identifier {
+            token: self.cur_token.clone().unwrap(),
+        });
+
+        while self.peek_token.as_ref().is_some_and(|t| t == &Token::Comma) {
+            self.next_token();
+            self.next_token();
+
+            if self.cur_token.is_none() {
+                return Err(String::from(
+                    "unable to parse function parameters, couldn't find identifier",
+                ));
+            }
+
+            identifiers.push(Identifier {
+                token: self.cur_token.clone().unwrap(),
+            });
+        }
+
+        if !self.expect_peek(Token::Rparen) {
+            return Err(String::from(
+                "unable to parse function parameters, couldn't find closing parentheses",
+            ));
+        }
+
+        Ok(identifiers)
+    }
 }
 
 fn get_precedence(token: &Option<Token>) -> usize {
@@ -378,8 +454,9 @@ mod tests {
     use crate::{
         lexer::{lexer::Lexer, token::Token},
         parser::ast::{
-            Boolean, ExpressionStatement, Identifier, IfExpression, InfixExpression,
-            IntegerLiteral, LetStatement, Node, PrefixExpression, Program, ReturnStatement,
+            Boolean, ExpressionStatement, FunctionLiteral, Identifier, IfExpression,
+            InfixExpression, IntegerLiteral, LetStatement, Node, PrefixExpression, Program,
+            ReturnStatement,
         },
     };
 
@@ -885,6 +962,135 @@ return 993322;
                     .expect("expected identifier");
 
                 assert_eq!(alternative.token, Token::Ident(String::from("y")));
+            }
+        }
+    }
+
+    #[test]
+    fn function_literal_test() {
+        let input = "fn(x, y) { x + y; }";
+
+        let lexer = Lexer::new(String::from(input));
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program();
+
+        if let Err(err) = &program {
+            println!("{err}");
+        }
+
+        assert!(program.is_ok());
+        let program = program.unwrap();
+
+        assert_eq!(program.statements.len(), 1);
+
+        let expression_statement = program
+            .statements
+            .first()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<ExpressionStatement>()
+            .expect("expected expression statement");
+
+        let function_literal = expression_statement
+            .expression
+            .as_any()
+            .downcast_ref::<FunctionLiteral>()
+            .expect("expected function literal");
+
+        assert_eq!(function_literal.parameters.len(), 2);
+
+        assert_eq!(
+            function_literal.parameters.get(0).unwrap().token,
+            Token::Ident(String::from("x"))
+        );
+        assert_eq!(
+            function_literal.parameters.get(1).unwrap().token,
+            Token::Ident(String::from("y"))
+        );
+
+        assert_eq!(function_literal.body.statements.len(), 1);
+
+        let expression_statement = function_literal
+            .body
+            .statements
+            .first()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<ExpressionStatement>()
+            .expect("expected expression statement");
+
+        let infix_expression = expression_statement
+            .expression
+            .as_any()
+            .downcast_ref::<InfixExpression>()
+            .expect("expected infix expression");
+
+        assert_eq!(infix_expression.token, Token::Plus);
+
+        let left = infix_expression
+            .left
+            .as_any()
+            .downcast_ref::<Identifier>()
+            .expect("expected identifier");
+        let right = infix_expression
+            .right
+            .as_any()
+            .downcast_ref::<Identifier>()
+            .expect("expected identifier");
+
+        assert_eq!(left.token, Token::Ident(String::from("x")));
+        assert_eq!(right.token, Token::Ident(String::from("y")));
+    }
+
+    #[test]
+    fn function_literal_test_corner_cases() {
+        let expected = vec![
+            ("fn() {};", vec![]),
+            ("fn(x) {};", vec![Token::Ident(String::from("x"))]),
+            (
+                "fn(x, y, z) {};",
+                vec![
+                    Token::Ident(String::from("x")),
+                    Token::Ident(String::from("y")),
+                    Token::Ident(String::from("z")),
+                ],
+            ),
+        ];
+
+        for (input, params) in expected {
+            let lexer = Lexer::new(String::from(input));
+            let mut parser = Parser::new(lexer);
+
+            let program = parser.parse_program();
+
+            if let Err(err) = &program {
+                println!("{err}");
+            }
+
+            assert!(program.is_ok());
+            let program = program.unwrap();
+
+            assert_eq!(program.statements.len(), 1);
+
+            let expression_statement = program
+                .statements
+                .first()
+                .unwrap()
+                .as_any()
+                .downcast_ref::<ExpressionStatement>()
+                .expect("expected expression statement");
+
+            let function_literal = expression_statement
+                .expression
+                .as_any()
+                .downcast_ref::<FunctionLiteral>()
+                .expect("expected function literal");
+
+            assert_eq!(function_literal.parameters.len(), params.len());
+
+            for (idx, param) in params.iter().enumerate() {
+                assert_eq!(&function_literal.parameters.get(idx).unwrap().token, param);
             }
         }
     }
