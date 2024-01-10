@@ -328,7 +328,13 @@ impl Parser {
 
         let mut alternative = None;
 
-        if parser.expect_peek(Token::Else) {
+        if parser
+            .peek_token
+            .as_ref()
+            .is_some_and(|t| t == &Token::Else)
+        {
+            parser.next_token();
+
             if !parser.expect_peek(Token::Lbrace) {
                 return Err(String::from(
                     "unable to parse if expression, couldn't find opening brace for alternative statement",
