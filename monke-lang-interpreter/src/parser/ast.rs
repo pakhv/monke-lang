@@ -136,6 +136,36 @@ impl Node for Boolean {
 }
 
 #[derive(Debug)]
+pub struct IfExpression {
+    pub token: Token,
+    pub condition: Box<dyn Expression>,
+    pub consequence: BlockStatement,
+    pub alternative: Option<BlockStatement>,
+}
+
+impl Expression for IfExpression {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Node for IfExpression {
+    fn pretty_print(&self) -> String {
+        let mut buffer = format!(
+            "if {} {}",
+            self.condition.pretty_print(),
+            self.consequence.pretty_print()
+        );
+
+        if let Some(alt) = self.alternative.as_ref() {
+            buffer.push_str(&format!("else {}", alt.pretty_print()));
+        }
+
+        buffer
+    }
+}
+
+#[derive(Debug)]
 pub struct LetStatement {
     pub token: Token,
     pub name: Identifier,
@@ -204,5 +234,27 @@ impl Statement for ExpressionStatement {
 impl Node for ExpressionStatement {
     fn pretty_print(&self) -> String {
         format!("{}", self.expression.pretty_print())
+    }
+}
+
+#[derive(Debug)]
+pub struct BlockStatement {
+    pub token: Token,
+    pub statements: Vec<Box<dyn Statement>>,
+}
+
+impl Statement for BlockStatement {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Node for BlockStatement {
+    fn pretty_print(&self) -> String {
+        self.statements
+            .iter()
+            .map(|s| s.pretty_print())
+            .reduce(|acc, cur| format!("{acc} {cur}"))
+            .unwrap_or(String::from(""))
     }
 }

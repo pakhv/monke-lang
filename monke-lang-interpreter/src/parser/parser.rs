@@ -1,7 +1,7 @@
 use super::super::error::InterpreterResult;
 use super::ast::{
-    Boolean, Expression, Identifier, InfixExpression, IntegerLiteral, LetStatement,
-    PrefixExpression, Program, ReturnStatement, Statement,
+    BlockStatement, Boolean, Expression, Identifier, IfExpression, InfixExpression, IntegerLiteral,
+    LetStatement, PrefixExpression, Program, ReturnStatement, Statement,
 };
 use crate::lexer::{lexer::Lexer, token::Token};
 use crate::parser::ast::{ExpressionStatement, ExpressionType};
@@ -140,6 +140,20 @@ impl Parser {
         }))
     }
 
+    fn parse_block_statement(&mut self) -> InterpreterResult<BlockStatement> {
+        let token = self.cur_token.clone().unwrap();
+        let mut statements = vec![];
+
+        self.next_token();
+
+        while self.cur_token.as_ref().is_some_and(|t| t != &Token::Rbrace) {
+            statements.push(self.parse_statement()?);
+            self.next_token();
+        }
+
+        Ok(BlockStatement { token, statements })
+    }
+
     fn parse_expression(&mut self, precedence: usize) -> InterpreterResult<Box<dyn Expression>> {
         let prefix_fn = self.get_prefix_fn()?;
         let mut left = prefix_fn(self)?;
@@ -185,6 +199,7 @@ impl Parser {
                 }
                 token if token == &Token::True || token == &Token::False => Ok(Self::parse_boolean),
                 Token::Lparen => Ok(Self::parse_grouped_expression),
+                Token::If => Ok(Self::parse_if_expression),
                 _ => todo!(),
             },
             None => Err(String::from(
@@ -284,6 +299,52 @@ impl Parser {
 
         Ok(expr)
     }
+
+    fn parse_if_expression(parser: &mut Parser) -> InterpreterResult<Box<dyn Expression>> {
+        let token = parser.cur_token.clone().unwrap();
+
+        if !parser.expect_peek(Token::Lparen) {
+            return Err(String::from(
+                "unable to parse if expression, couldn't find opening parentheses",
+            ));
+        }
+
+        parser.next_token();
+        let condition = parser.parse_expression(ExpressionType::Lowest as usize)?;
+
+        if !parser.expect_peek(Token::Rparen) {
+            return Err(String::from(
+                "unable to parse if expression, couldn't find closing parentheses",
+            ));
+        }
+
+        if !parser.expect_peek(Token::Lbrace) {
+            return Err(String::from(
+                "unable to parse if expression, couldn't find opening brace for consequence statement",
+            ));
+        }
+
+        let consequence = parser.parse_block_statement()?;
+
+        let mut alternative = None;
+
+        if parser.expect_peek(Token::Else) {
+            if !parser.expect_peek(Token::Lbrace) {
+                return Err(String::from(
+                    "unable to parse if expression, couldn't find opening brace for alternative statement",
+                ));
+            }
+
+            alternative = Some(parser.parse_block_statement()?);
+        }
+
+        Ok(Box::new(IfExpression {
+            token,
+            condition,
+            consequence,
+            alternative,
+        }))
+    }
 }
 
 fn get_precedence(token: &Option<Token>) -> usize {
@@ -311,8 +372,8 @@ mod tests {
     use crate::{
         lexer::{lexer::Lexer, token::Token},
         parser::ast::{
-            Boolean, ExpressionStatement, Identifier, InfixExpression, IntegerLiteral,
-            LetStatement, Node, PrefixExpression, Program, ReturnStatement,
+            Boolean, ExpressionStatement, Identifier, IfExpression, InfixExpression,
+            IntegerLiteral, LetStatement, Node, PrefixExpression, Program, ReturnStatement,
         },
     };
 
@@ -721,6 +782,104 @@ return 993322;
             let program = program.unwrap();
 
             assert_eq!(program.pretty_print(), expected);
+        }
+    }
+
+    #[test]
+    fn if_expression_test() {
+        let expected = vec![
+            ("if (x < y) { x }", false),
+            ("if (x < y) { x } else { y }", true),
+        ];
+
+        for (input, has_alternative_statement) in expected {
+            let lexer = Lexer::new(String::from(input));
+            let mut parser = Parser::new(lexer);
+
+            let program = parser.parse_program();
+
+            if let Err(err) = &program {
+                println!("{err}");
+            }
+
+            assert!(program.is_ok());
+            let program = program.unwrap();
+
+            let expression_statement = program
+                .statements
+                .first()
+                .unwrap()
+                .as_any()
+                .downcast_ref::<ExpressionStatement>()
+                .expect("expected expression statement");
+
+            let if_expression = expression_statement
+                .expression
+                .as_any()
+                .downcast_ref::<IfExpression>()
+                .expect("expected if expression");
+
+            let infix_expression = if_expression
+                .condition
+                .as_any()
+                .downcast_ref::<InfixExpression>()
+                .expect("expected infix expression");
+
+            assert_eq!(infix_expression.token, Token::Lt);
+
+            let left = infix_expression
+                .left
+                .as_any()
+                .downcast_ref::<Identifier>()
+                .expect("expected identifier");
+            let right = infix_expression
+                .right
+                .as_any()
+                .downcast_ref::<Identifier>()
+                .expect("expected identifier");
+
+            assert_eq!(left.token, Token::Ident(String::from("x")));
+            assert_eq!(right.token, Token::Ident(String::from("y")));
+
+            assert_eq!(if_expression.consequence.statements.len(), 1);
+
+            let consequence = if_expression
+                .consequence
+                .statements
+                .first()
+                .unwrap()
+                .as_any()
+                .downcast_ref::<ExpressionStatement>()
+                .expect("expected expression statement");
+
+            let consequence = consequence
+                .expression
+                .as_any()
+                .downcast_ref::<Identifier>()
+                .expect("expected identifier");
+
+            assert_eq!(consequence.token, Token::Ident(String::from("x")));
+
+            if has_alternative_statement {
+                let alternative = if_expression
+                    .alternative
+                    .as_ref()
+                    .unwrap()
+                    .statements
+                    .first()
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<ExpressionStatement>()
+                    .expect("expected expression statement");
+
+                let alternative = alternative
+                    .expression
+                    .as_any()
+                    .downcast_ref::<Identifier>()
+                    .expect("expected identifier");
+
+                assert_eq!(alternative.token, Token::Ident(String::from("y")));
+            }
         }
     }
 }
