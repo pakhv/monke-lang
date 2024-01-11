@@ -1,6 +1,6 @@
 use super::super::error::InterpreterResult;
 use super::ast::{
-    BlockStatement, Boolean, Expression, FunctionLiteral, Identifier, IfExpression,
+    BlockStatement, Boolean, CallExpression, Expression, FunctionLiteral, Identifier, IfExpression,
     InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
     Statement,
 };
@@ -221,6 +221,7 @@ impl Parser {
                 Token::Gt => Ok(Self::parse_infix_expression),
                 Token::Eq => Ok(Self::parse_infix_expression),
                 Token::Ne => Ok(Self::parse_infix_expression),
+                Token::Lparen => Ok(Self::parse_call_expression),
                 _ => todo!(),
             },
             None => Err(String::from(
@@ -427,6 +428,51 @@ impl Parser {
 
         Ok(identifiers)
     }
+
+    fn parse_call_expression(
+        parser: &mut Parser,
+        function: Box<dyn Expression>,
+    ) -> InterpreterResult<Box<dyn Expression>> {
+        let token = parser.cur_token.clone().unwrap();
+        let arguments = parser.parse_call_arguments()?;
+
+        Ok(Box::new(CallExpression {
+            token,
+            arguments,
+            function,
+        }))
+    }
+
+    fn parse_call_arguments(&mut self) -> InterpreterResult<Vec<Box<dyn Expression>>> {
+        let mut arguments = vec![];
+
+        if self
+            .peek_token
+            .as_ref()
+            .is_some_and(|t| t == &Token::Rparen)
+        {
+            self.next_token();
+            return Ok(arguments);
+        }
+
+        self.next_token();
+        arguments.push(self.parse_expression(ExpressionType::Lowest as usize)?);
+
+        while self.peek_token.as_ref().is_some_and(|t| t == &Token::Comma) {
+            self.next_token();
+            self.next_token();
+
+            arguments.push(self.parse_expression(ExpressionType::Lowest as usize)?);
+        }
+
+        if !self.expect_peek(Token::Rparen) {
+            return Err(String::from(
+                "unable to parse call arguments, couldn't find closing parentheses",
+            ));
+        }
+
+        Ok(arguments)
+    }
 }
 
 fn get_precedence(token: &Option<Token>) -> usize {
@@ -440,6 +486,7 @@ fn get_precedence(token: &Option<Token>) -> usize {
             Token::Gt => ExpressionType::LessGreater,
             Token::Eq => ExpressionType::Equals,
             Token::Ne => ExpressionType::Equals,
+            Token::Lparen => ExpressionType::Call,
             _ => ExpressionType::Lowest,
         },
         None => ExpressionType::Lowest,
@@ -454,9 +501,9 @@ mod tests {
     use crate::{
         lexer::{lexer::Lexer, token::Token},
         parser::ast::{
-            Boolean, ExpressionStatement, FunctionLiteral, Identifier, IfExpression,
-            InfixExpression, IntegerLiteral, LetStatement, Node, PrefixExpression, Program,
-            ReturnStatement,
+            Boolean, CallExpression, ExpressionStatement, FunctionLiteral, Identifier,
+            IfExpression, InfixExpression, IntegerLiteral, LetStatement, Node, PrefixExpression,
+            Program, ReturnStatement,
         },
     };
 
@@ -849,6 +896,15 @@ return 993322;
             ("2 / (5 + 5)", "(2 / (5 + 5))"),
             ("-(5 + 5)", "(-(5 + 5))"),
             ("!(true == true)", "(!(true == true))"),
+            ("a + add(b * c) + d", "((a + add((b * c))) + d)"),
+            (
+                "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))",
+                "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+            ),
+            (
+                "add(a + b + c * d / f + g)",
+                "add((((a + b) + ((c * d) / f)) + g))",
+            ),
         ];
 
         for (input, expected) in expected_expressions {
@@ -1093,5 +1149,105 @@ return 993322;
                 assert_eq!(&function_literal.parameters.get(idx).unwrap().token, param);
             }
         }
+    }
+
+    #[test]
+    fn call_expression_test() {
+        let input = "add(1, 2 * 3, 4 + 5);";
+
+        let lexer = Lexer::new(String::from(input));
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program();
+
+        if let Err(err) = &program {
+            println!("{err}");
+        }
+
+        assert!(program.is_ok());
+        let program = program.unwrap();
+
+        assert_eq!(program.statements.len(), 1);
+
+        let expression_statement = program
+            .statements
+            .first()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<ExpressionStatement>()
+            .expect("expected expression statement");
+
+        let call_expression = expression_statement
+            .expression
+            .as_any()
+            .downcast_ref::<CallExpression>()
+            .expect("expected call expression");
+
+        let identifier = call_expression
+            .function
+            .as_any()
+            .downcast_ref::<Identifier>()
+            .expect("expected identifier");
+
+        assert_eq!(identifier.token, Token::Ident(String::from("add")));
+        assert_eq!(call_expression.arguments.len(), 3);
+
+        let int_literal = call_expression
+            .arguments
+            .get(0)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<IntegerLiteral>()
+            .expect("expected integer literal");
+
+        assert_eq!(int_literal.value, 1);
+
+        let first_infix_arg = call_expression
+            .arguments
+            .get(1)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<InfixExpression>()
+            .expect("expected infix expression");
+
+        let left = first_infix_arg
+            .left
+            .as_any()
+            .downcast_ref::<IntegerLiteral>()
+            .expect("expected integer literal");
+
+        let right = first_infix_arg
+            .right
+            .as_any()
+            .downcast_ref::<IntegerLiteral>()
+            .expect("expected integer literal");
+
+        assert_eq!(left.value, 2);
+        assert_eq!(right.value, 3);
+        assert_eq!(first_infix_arg.token, Token::Asterisk);
+
+        let second_infix_arg = call_expression
+            .arguments
+            .get(2)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<InfixExpression>()
+            .expect("expected infix expression");
+
+        let left = second_infix_arg
+            .left
+            .as_any()
+            .downcast_ref::<IntegerLiteral>()
+            .expect("expected integer literal");
+
+        let right = second_infix_arg
+            .right
+            .as_any()
+            .downcast_ref::<IntegerLiteral>()
+            .expect("expected integer literal");
+
+        assert_eq!(left.value, 4);
+        assert_eq!(right.value, 5);
+        assert_eq!(second_infix_arg.token, Token::Plus);
     }
 }

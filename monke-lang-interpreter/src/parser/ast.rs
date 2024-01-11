@@ -196,6 +196,32 @@ impl Node for FunctionLiteral {
 }
 
 #[derive(Debug)]
+pub struct CallExpression {
+    pub token: Token,
+    pub function: Box<dyn Expression>,
+    pub arguments: Vec<Box<dyn Expression>>,
+}
+
+impl Expression for CallExpression {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Node for CallExpression {
+    fn pretty_print(&self) -> String {
+        let arguments = self
+            .arguments
+            .iter()
+            .map(|p| p.pretty_print())
+            .reduce(|acc, cur| format!("{acc}, {cur}"))
+            .unwrap_or(String::new());
+
+        format!("{}({})", self.function.pretty_print(), arguments)
+    }
+}
+
+#[derive(Debug)]
 pub struct LetStatement {
     pub token: Token,
     pub name: Identifier,
