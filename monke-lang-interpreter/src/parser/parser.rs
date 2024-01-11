@@ -75,18 +75,16 @@ impl Parser {
             ));
         }
 
-        loop {
-            self.next_token();
+        self.next_token();
 
-            match &self.cur_token {
-                Some(Token::Semicolon) => break,
-                Some(_) => (),
-                None => {
-                    return Err(String::from(
-                        "unable to parse let statement, couldn't find end of statement",
-                    ))
-                }
-            }
+        let value = self.parse_expression(ExpressionType::Lowest as usize)?;
+
+        if self
+            .peek_token
+            .as_ref()
+            .is_some_and(|t| t == &Token::Semicolon)
+        {
+            self.next_token();
         }
 
         Ok(Box::new(LetStatement {
@@ -94,32 +92,28 @@ impl Parser {
             name: Identifier {
                 token: statement_name,
             },
-            value: Box::new(Identifier {
-                token: Token::Illegal,
-            }),
+            value,
         }))
     }
 
     fn parse_return_statement(&mut self) -> InterpreterResult<Box<dyn Statement>> {
-        loop {
-            self.next_token();
+        let token = self.cur_token.clone().unwrap();
 
-            match &self.cur_token {
-                Some(Token::Semicolon) => break,
-                Some(_) => (),
-                None => {
-                    return Err(String::from(
-                        "unable to parse let statement, couldn't find end of statement",
-                    ))
-                }
-            }
+        self.next_token();
+
+        let return_value = self.parse_expression(ExpressionType::Lowest as usize)?;
+
+        if self
+            .peek_token
+            .as_ref()
+            .is_some_and(|t| t == &Token::Semicolon)
+        {
+            self.next_token();
         }
 
         Ok(Box::new(ReturnStatement {
-            token: Token::Return,
-            return_value: Box::new(Identifier {
-                token: Token::Illegal,
-            }),
+            token,
+            return_value,
         }))
     }
 
@@ -501,7 +495,7 @@ mod tests {
     use crate::{
         lexer::{lexer::Lexer, token::Token},
         parser::ast::{
-            Boolean, CallExpression, ExpressionStatement, FunctionLiteral, Identifier,
+            Boolean, CallExpression, Expression, ExpressionStatement, FunctionLiteral, Identifier,
             IfExpression, InfixExpression, IntegerLiteral, LetStatement, Node, PrefixExpression,
             Program, ReturnStatement,
         },
@@ -509,68 +503,182 @@ mod tests {
 
     #[test]
     fn let_statements_test() {
-        let input = r#"let x = 5;
-let y = 10;
-let foobar = 838383;"#;
-        let lexer = Lexer::new(String::from(input));
-        let mut parser = Parser::new(lexer);
-
-        let program = parser.parse_program();
-
-        if let Err(err) = &program {
-            println!("{err}");
-        }
-
-        assert!(program.is_ok());
-        let program = program.unwrap();
-
-        assert!(program.statements.len() == 3);
-
-        let expected_identifiers = vec![
-            Token::Ident(String::from("x")),
-            Token::Ident(String::from("y")),
-            Token::Ident(String::from("foobar")),
+        let expected: Vec<(&str, Token, Box<dyn Expression>)> = vec![
+            (
+                "let x = 5;",
+                Token::Ident(String::from("x")),
+                Box::new(IntegerLiteral {
+                    token: Token::Int(String::from("5")),
+                    value: 5,
+                }),
+            ),
+            (
+                "let y = true;",
+                Token::Ident(String::from("y")),
+                Box::new(Boolean {
+                    token: Token::True,
+                    value: true,
+                }),
+            ),
+            (
+                "let foobar = y;",
+                Token::Ident(String::from("foobar")),
+                Box::new(Identifier {
+                    token: Token::Ident(String::from("y")),
+                }),
+            ),
         ];
 
-        for (expected_token, statement) in expected_identifiers.iter().zip(program.statements) {
-            let let_statement = statement
+        for (input, let_ident, expression) in expected {
+            let lexer = Lexer::new(String::from(input));
+            let mut parser = Parser::new(lexer);
+
+            let program = parser.parse_program();
+
+            if let Err(err) = &program {
+                println!("{err}");
+            }
+
+            assert!(program.is_ok());
+            let program = program.unwrap();
+
+            assert!(program.statements.len() == 1);
+            let let_statement = program
+                .statements
+                .first()
+                .unwrap()
                 .as_any()
                 .downcast_ref::<LetStatement>()
                 .expect("expected let statement");
 
-            assert_eq!(let_statement.token, Token::Let);
-            assert_eq!(&let_statement.name.token, expected_token);
+            assert_eq!(let_statement.name.token, let_ident);
+
+            let int_literal = let_statement
+                .value
+                .as_any()
+                .downcast_ref::<IntegerLiteral>();
+
+            if let Some(int_literal) = int_literal {
+                let expression = expression
+                    .as_any()
+                    .downcast_ref::<IntegerLiteral>()
+                    .expect("expected integer literal");
+
+                assert_eq!(int_literal.value, expression.value);
+            }
+
+            let boolean = let_statement.value.as_any().downcast_ref::<Boolean>();
+
+            if let Some(boolean) = boolean {
+                let expression = expression
+                    .as_any()
+                    .downcast_ref::<Boolean>()
+                    .expect("expected integer literal");
+
+                assert_eq!(boolean.value, expression.value);
+            }
+
+            let identifier = let_statement.value.as_any().downcast_ref::<Identifier>();
+
+            if let Some(identifier) = identifier {
+                let expression = expression
+                    .as_any()
+                    .downcast_ref::<Identifier>()
+                    .expect("expected integer literal");
+
+                assert_eq!(identifier.token, expression.token);
+            }
         }
     }
 
     #[test]
     fn return_statements_test() {
-        let input = r#"
-return 5;
-return 10;
-return 993322;
-"#;
-        let lexer = Lexer::new(String::from(input));
-        let mut parser = Parser::new(lexer);
+        let expected: Vec<(&str, Box<dyn Expression>)> = vec![
+            (
+                "return 5;",
+                Box::new(IntegerLiteral {
+                    token: Token::Int(String::from("5")),
+                    value: 5,
+                }),
+            ),
+            (
+                "return true;",
+                Box::new(Boolean {
+                    token: Token::True,
+                    value: true,
+                }),
+            ),
+            (
+                "return y;",
+                Box::new(Identifier {
+                    token: Token::Ident(String::from("y")),
+                }),
+            ),
+        ];
 
-        let program = parser.parse_program();
+        for (input, expression) in expected {
+            let lexer = Lexer::new(String::from(input));
+            let mut parser = Parser::new(lexer);
 
-        if let Err(err) = &program {
-            println!("{err}");
-        }
+            let program = parser.parse_program();
 
-        assert!(program.is_ok());
-        let program = program.unwrap();
+            if let Err(err) = &program {
+                println!("{err}");
+            }
 
-        assert!(program.statements.len() == 3);
+            assert!(program.is_ok());
+            let program = program.unwrap();
 
-        for statement in program.statements {
-            let return_statement = statement
+            assert!(program.statements.len() == 1);
+            let return_statement = program
+                .statements
+                .first()
+                .unwrap()
                 .as_any()
                 .downcast_ref::<ReturnStatement>()
                 .expect("expected let statement");
 
-            assert_eq!(return_statement.token, Token::Return);
+            let int_literal = return_statement
+                .return_value
+                .as_any()
+                .downcast_ref::<IntegerLiteral>();
+
+            if let Some(int_literal) = int_literal {
+                let expression = expression
+                    .as_any()
+                    .downcast_ref::<IntegerLiteral>()
+                    .expect("expected integer literal");
+
+                assert_eq!(int_literal.value, expression.value);
+            }
+
+            let boolean = return_statement
+                .return_value
+                .as_any()
+                .downcast_ref::<Boolean>();
+
+            if let Some(boolean) = boolean {
+                let expression = expression
+                    .as_any()
+                    .downcast_ref::<Boolean>()
+                    .expect("expected integer literal");
+
+                assert_eq!(boolean.value, expression.value);
+            }
+
+            let identifier = return_statement
+                .return_value
+                .as_any()
+                .downcast_ref::<Identifier>();
+
+            if let Some(identifier) = identifier {
+                let expression = expression
+                    .as_any()
+                    .downcast_ref::<Identifier>()
+                    .expect("expected integer literal");
+
+                assert_eq!(identifier.token, expression.token);
+            }
         }
     }
 
