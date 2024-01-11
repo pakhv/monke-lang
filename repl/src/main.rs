@@ -19,7 +19,7 @@ fn main() -> Result<()> {
              '---'
 "#;
     let mut buffer = String::new();
-    io::stdout().write_all(b"Enter your monke code\n>>")?;
+    io::stdout().write_all(b"Enter your monke code\n>> ")?;
     io::stdout().flush()?;
 
     while let Ok(_) = io::stdin().read_line(&mut buffer) {
