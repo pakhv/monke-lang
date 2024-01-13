@@ -1,7 +1,4 @@
-use monke_lang_interpreter::{
-    lexer::lexer::Lexer,
-    parser::{ast::Node, parser::Parser},
-};
+use monke_lang_interpreter::{lexer::lexer::Lexer, parser::parser::Parser};
 use std::io::{self, Result, Write};
 
 fn main() -> Result<()> {
@@ -29,7 +26,7 @@ fn main() -> Result<()> {
         let program = parser.parse_program();
 
         match program {
-            Ok(p) => println!("{}", p.pretty_print()),
+            Ok(p) => println!("{p}"),
             Err(err) => {
                 println!("{MONKEY_FACE}");
                 println!("{err}");

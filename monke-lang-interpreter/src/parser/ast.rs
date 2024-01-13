@@ -1,17 +1,5 @@
 use crate::lexer::token::Token;
-use std::{any::Any, fmt::Debug};
-
-pub trait Node {
-    fn pretty_print(&self) -> String;
-}
-
-pub trait Statement: Debug + Node {
-    fn as_any(&self) -> &dyn Any;
-}
-
-pub trait Expression: Debug + Node {
-    fn as_any(&self) -> &dyn Any;
-}
+use std::fmt::{Debug, Display};
 
 pub enum ExpressionType {
     Lowest = 1,
@@ -23,297 +11,291 @@ pub enum ExpressionType {
     Call,        // myFunction(X)
 }
 
-#[derive(Debug)]
-pub struct Program {
-    pub statements: Vec<Box<dyn Statement>>,
+#[derive(Debug, Clone)]
+pub enum Program {
+    Statement(Statement),
+    Statements(Vec<Statement>),
+    Expression(Expression),
+    Expressions(Vec<Expression>),
 }
 
-impl Node for Program {
-    fn pretty_print(&self) -> String {
-        let mut buffer = String::new();
+#[derive(Debug, Clone)]
+pub enum Expression {
+    Identifier(Identifier),
+    IntegerLiteral(IntegerLiteral),
+    Prefix(PrefixExpression),
+    Infix(InfixExpression),
+    Boolean(Boolean),
+    If(IfExpression),
+    FunctionLiteral(FunctionLiteral),
+    Call(CallExpression),
+}
 
-        for statement in &self.statements {
-            buffer.push_str(&statement.pretty_print());
+#[derive(Debug, Clone)]
+pub enum Statement {
+    Let(LetStatement),
+    Return(ReturnStatement),
+    Expression(ExpressionStatement),
+    Block(BlockStatement),
+}
+
+impl Display for Program {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Program::Statement(statement) => write!(f, "{statement}"),
+            Program::Statements(statements) => {
+                write!(
+                    f,
+                    "{}",
+                    statements
+                        .iter()
+                        .map(|s| s.to_string())
+                        .reduce(|acc, cur| format!("{acc}{cur}"))
+                        .unwrap_or(String::new())
+                )
+            }
+            Program::Expression(expression) => write!(f, "{expression}"),
+            Program::Expressions(expressions) => {
+                write!(
+                    f,
+                    "{}",
+                    expressions
+                        .iter()
+                        .map(|e| e.to_string())
+                        .reduce(|acc, cur| format!("{acc}{cur}"))
+                        .unwrap_or(String::new())
+                )
+            }
         }
-
-        buffer
     }
 }
 
-#[derive(Debug)]
+impl Display for Expression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expression::Identifier(ident) => write!(f, "{ident}"),
+            Expression::IntegerLiteral(int) => write!(f, "{int}"),
+            Expression::Prefix(prefix) => write!(f, "{prefix}"),
+            Expression::Infix(infix) => write!(f, "{infix}"),
+            Expression::Boolean(boolean) => write!(f, "{boolean}"),
+            Expression::If(if_expr) => write!(f, "{if_expr}"),
+            Expression::FunctionLiteral(func) => write!(f, "{func}"),
+            Expression::Call(call) => write!(f, "{call}"),
+        }
+    }
+}
+
+impl Display for Statement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Statement::Let(let_statement) => write!(f, "{let_statement}"),
+            Statement::Return(return_statement) => write!(f, "{return_statement}"),
+            Statement::Expression(expr) => write!(f, "{expr}"),
+            Statement::Block(block) => write!(f, "{block}"),
+        }
+    }
+}
+
+impl From<Expression> for Program {
+    fn from(expression: Expression) -> Self {
+        Program::Expression(expression)
+    }
+}
+
+impl From<Vec<Expression>> for Program {
+    fn from(expressions: Vec<Expression>) -> Self {
+        Program::Expressions(expressions)
+    }
+}
+
+impl From<Statement> for Program {
+    fn from(statement: Statement) -> Self {
+        Program::Statement(statement)
+    }
+}
+
+impl From<Vec<Statement>> for Program {
+    fn from(statements: Vec<Statement>) -> Self {
+        Program::Statements(statements)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Identifier {
     pub token: Token,
 }
 
-impl Expression for Identifier {
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.token)
     }
 }
 
-impl Node for Identifier {
-    fn pretty_print(&self) -> String {
-        self.token.to_string()
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IntegerLiteral {
     pub token: Token,
     pub value: i64,
 }
 
-impl Expression for IntegerLiteral {
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Display for IntegerLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.token)
     }
 }
 
-impl Node for IntegerLiteral {
-    fn pretty_print(&self) -> String {
-        self.token.to_string()
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PrefixExpression {
     pub token: Token,
-    pub right: Box<dyn Expression>,
+    pub right: Box<Expression>,
 }
 
-impl Expression for PrefixExpression {
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Display for PrefixExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}{})", self.token, self.right)
     }
 }
 
-impl Node for PrefixExpression {
-    fn pretty_print(&self) -> String {
-        format!("({}{})", self.token, self.right.pretty_print())
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InfixExpression {
     pub token: Token,
-    pub left: Box<dyn Expression>,
-    pub right: Box<dyn Expression>,
+    pub left: Box<Expression>,
+    pub right: Box<Expression>,
 }
 
-impl Expression for InfixExpression {
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Display for InfixExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({} {} {})", self.left, self.token, self.right)
     }
 }
 
-impl Node for InfixExpression {
-    fn pretty_print(&self) -> String {
-        format!(
-            "({} {} {})",
-            self.left.pretty_print(),
-            self.token,
-            self.right.pretty_print()
-        )
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Boolean {
     pub token: Token,
     pub value: bool,
 }
 
-impl Expression for Boolean {
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Display for Boolean {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
     }
 }
 
-impl Node for Boolean {
-    fn pretty_print(&self) -> String {
-        self.value.to_string()
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfExpression {
     pub token: Token,
-    pub condition: Box<dyn Expression>,
+    pub condition: Box<Expression>,
     pub consequence: BlockStatement,
     pub alternative: Option<BlockStatement>,
 }
 
-impl Expression for IfExpression {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl Node for IfExpression {
-    fn pretty_print(&self) -> String {
-        let mut buffer = format!(
-            "if {} {}",
-            self.condition.pretty_print(),
-            self.consequence.pretty_print()
-        );
+impl Display for IfExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut buffer = format!("if {} {}", self.condition, self.consequence);
 
         if let Some(alt) = self.alternative.as_ref() {
-            buffer.push_str(&format!("else {}", alt.pretty_print()));
+            buffer.push_str(&format!("else {}", alt));
         }
 
-        buffer
+        write!(f, "{}", buffer)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionLiteral {
     pub token: Token,
     pub parameters: Vec<Identifier>,
     pub body: BlockStatement,
 }
 
-impl Expression for FunctionLiteral {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl Node for FunctionLiteral {
-    fn pretty_print(&self) -> String {
+impl Display for FunctionLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buffer = self.token.to_string();
 
         let params = self
             .parameters
             .iter()
-            .map(|p| p.pretty_print())
+            .map(|p| p.to_string())
             .reduce(|acc, cur| format!("{acc}, {cur}"))
             .unwrap_or(String::new());
 
-        buffer.push_str(&format!("({}){}", params, self.body.pretty_print()));
+        buffer.push_str(&format!("({}){}", params, self.body));
 
-        buffer
+        write!(f, "{}", buffer)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CallExpression {
     pub token: Token,
-    pub function: Box<dyn Expression>,
-    pub arguments: Vec<Box<dyn Expression>>,
+    pub function: Box<Expression>,
+    pub arguments: Vec<Expression>,
 }
 
-impl Expression for CallExpression {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl Node for CallExpression {
-    fn pretty_print(&self) -> String {
+impl Display for CallExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let arguments = self
             .arguments
             .iter()
-            .map(|p| p.pretty_print())
+            .map(|a| a.to_string())
             .reduce(|acc, cur| format!("{acc}, {cur}"))
             .unwrap_or(String::new());
 
-        format!("{}({})", self.function.pretty_print(), arguments)
+        write!(f, "{}({})", self.function, arguments)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LetStatement {
     pub token: Token,
     pub name: Identifier,
-    pub value: Box<dyn Expression>,
+    pub value: Expression,
 }
 
-impl Statement for LetStatement {
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Display for LetStatement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} = {};", &self.token, &self.name, &self.value)
     }
 }
 
-impl Node for LetStatement {
-    fn pretty_print(&self) -> String {
-        let mut buffer = String::new();
-
-        buffer.push_str(&format!(
-            "{} {} = {};",
-            &self.token.to_string(),
-            &self.name.pretty_print(),
-            &self.value.pretty_print()
-        ));
-
-        buffer
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReturnStatement {
     pub token: Token,
-    pub return_value: Box<dyn Expression>,
+    pub return_value: Expression,
 }
 
-impl Statement for ReturnStatement {
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Display for ReturnStatement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {};", &self.token, &self.return_value)
     }
 }
 
-impl Node for ReturnStatement {
-    fn pretty_print(&self) -> String {
-        let mut buffer = String::new();
-
-        buffer.push_str(&format!(
-            "{} {};",
-            &self.token.to_string(),
-            &self.return_value.pretty_print()
-        ));
-
-        buffer
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExpressionStatement {
     pub token: Token,
-    pub expression: Box<dyn Expression>,
+    pub expression: Expression,
 }
 
-impl Statement for ExpressionStatement {
-    fn as_any(&self) -> &dyn Any {
-        self
+impl Display for ExpressionStatement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.expression)
     }
 }
 
-impl Node for ExpressionStatement {
-    fn pretty_print(&self) -> String {
-        format!("{}", self.expression.pretty_print())
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockStatement {
     pub token: Token,
-    pub statements: Vec<Box<dyn Statement>>,
+    pub statements: Vec<Statement>,
 }
 
-impl Statement for BlockStatement {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl Node for BlockStatement {
-    fn pretty_print(&self) -> String {
+impl Display for BlockStatement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let block = self
             .statements
             .iter()
-            .map(|s| s.pretty_print())
+            .map(|b| b.to_string())
             .reduce(|acc, cur| format!("{acc} {cur}"))
-            .unwrap_or(String::from(""));
+            .unwrap_or(String::new());
 
-        format!("{{ {block} }}")
+        write!(f, "{{ {block} }}")
     }
 }
