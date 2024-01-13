@@ -1,4 +1,4 @@
-use super::super::error::InterpreterResult;
+use super::super::result::InterpreterResult;
 use super::ast::{
     BlockStatement, Boolean, CallExpression, Expression, FunctionLiteral, Identifier, IfExpression,
     InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
