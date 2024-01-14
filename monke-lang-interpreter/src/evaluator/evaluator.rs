@@ -9,7 +9,8 @@ use super::types::{Boolean, Integer, Null, Object};
 pub fn eval(program: Program) -> InterpreterResult<Object> {
     match program {
         Program::Statement(statement) => match statement {
-            Statement::Expression(expr) => eval(expr.expression.into()),
+            Statement::Expression(expr) => Ok(eval(expr.expression.into())?),
+            Statement::Block(block) => Ok(eval(block.statements.into())?),
             _ => todo!(),
         },
         Program::Statements(statements) => Ok(eval_statements(statements)?),
@@ -26,6 +27,7 @@ pub fn eval(program: Program) -> InterpreterResult<Object> {
 
                 Ok(eval_infix_expression(infix.token, left, right)?)
             }
+            Expression::If(if_expr) => Ok(eval_if_expression(if_expr)?),
             _ => todo!(),
         },
         Program::Expressions(_) => todo!(),
@@ -95,6 +97,22 @@ fn eval_infix_expression(token: Token, left: Object, right: Object) -> Interpret
     }
 }
 
+fn eval_if_expression(if_expr: crate::parser::ast::IfExpression) -> InterpreterResult<Object> {
+    let is_truthy = match eval((*if_expr.condition).into())? {
+        Object::Boolean(bool) => bool.value,
+        Object::Null(_) => false,
+        _ => true,
+    };
+
+    match is_truthy {
+        true => Ok(eval(Statement::Block(if_expr.consequence).into())?),
+        false => match if_expr.alternative {
+            Some(alt) => Ok(eval(Statement::Block(alt).into())?),
+            None => Ok(Object::Null(Null {})),
+        },
+    }
+}
+
 fn eval_statements(statements: Vec<Statement>) -> InterpreterResult<Object> {
     let mut result = Object::Null(Null {});
 
@@ -108,7 +126,10 @@ fn eval_statements(statements: Vec<Statement>) -> InterpreterResult<Object> {
 #[cfg(test)]
 mod test {
     use crate::{
-        evaluator::{evaluator::eval, types::Object},
+        evaluator::{
+            evaluator::eval,
+            types::{Integer, Null, Object},
+        },
         lexer::lexer::Lexer,
         parser::parser::Parser,
     };
@@ -218,6 +239,37 @@ mod test {
             match result {
                 Object::Boolean(bool) => assert_eq!(bool.value, expected_result),
                 actual => panic!("integer expected, but got {actual}"),
+            }
+        }
+    }
+
+    #[test]
+    fn if_else_evaluation_test() {
+        let expected = vec![
+            ("if (true) { 10 }", Object::Integer(Integer { value: 10 })),
+            ("if (false) { 10 }", Object::Null(Null {})),
+            ("if (1) { 10 }", Object::Integer(Integer { value: 10 })),
+            ("if (1 < 2) { 10 }", Object::Integer(Integer { value: 10 })),
+            ("if (1 > 2) { 10 }", Object::Null(Null {})),
+            (
+                "if (1 > 2) { 10 } else { 20 }",
+                Object::Integer(Integer { value: 20 }),
+            ),
+            (
+                "if (1 < 2) { 10 } else { 20 }",
+                Object::Integer(Integer { value: 10 }),
+            ),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match (result, expected_result) {
+                (Object::Integer(int), Object::Integer(exp)) => {
+                    assert_eq!(int.value, exp.value)
+                }
+                (Object::Null(_), Object::Null(_)) => (),
+                (actual, exp) => panic!("integers or nulls expected, but got {actual} and {exp}"),
             }
         }
     }
