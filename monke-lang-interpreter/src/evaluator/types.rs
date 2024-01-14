@@ -1,10 +1,11 @@
 use std::fmt::Display;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Object {
     Integer(Integer),
     Boolean(Boolean),
     Null(Null),
+    Return(Return),
 }
 
 impl Display for Object {
@@ -13,11 +14,12 @@ impl Display for Object {
             Object::Integer(int) => write!(f, "{int}"),
             Object::Boolean(bool) => write!(f, "{bool}"),
             Object::Null(null) => write!(f, "{null}"),
+            Object::Return(return_statement) => write!(f, "{return_statement}"),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Integer {
     pub value: i64,
 }
@@ -28,7 +30,7 @@ impl Display for Integer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Boolean {
     pub value: bool,
 }
@@ -39,11 +41,22 @@ impl Display for Boolean {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Null {}
 
 impl Display for Null {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "null")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Return {
+    pub value: Box<Object>,
+}
+
+impl Display for Return {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value.to_string())
     }
 }

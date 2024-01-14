@@ -4,16 +4,19 @@ use crate::{
     result::InterpreterResult,
 };
 
-use super::types::{Boolean, Integer, Null, Object};
+use super::types::{Boolean, Integer, Null, Object, Return};
 
 pub fn eval(program: Program) -> InterpreterResult<Object> {
     match program {
         Program::Statement(statement) => match statement {
             Statement::Expression(expr) => Ok(eval(expr.expression.into())?),
-            Statement::Block(block) => Ok(eval(block.statements.into())?),
+            Statement::Block(block) => Ok(eval_block_statement(block)?),
+            Statement::Return(return_statement) => Ok(Object::Return(Return {
+                value: Box::new(eval(return_statement.return_value.into())?),
+            })),
             _ => todo!(),
         },
-        Program::Statements(statements) => Ok(eval_statements(statements)?),
+        Program::Statements(statements) => Ok(eval_program(statements)?),
         Program::Expression(expr) => match expr {
             Expression::IntegerLiteral(int) => Ok(Object::Integer(Integer { value: int.value })),
             Expression::Boolean(bool) => Ok(Object::Boolean(Boolean { value: bool.value })),
@@ -32,6 +35,20 @@ pub fn eval(program: Program) -> InterpreterResult<Object> {
         },
         Program::Expressions(_) => todo!(),
     }
+}
+
+fn eval_block_statement(block: crate::parser::ast::BlockStatement) -> InterpreterResult<Object> {
+    let mut result = Object::Null(Null {});
+
+    for statement in block.statements {
+        result = eval(statement.into())?;
+
+        if let Object::Return(_) = result {
+            return Ok(result);
+        }
+    }
+
+    Ok(result)
 }
 
 fn eval_prefix_expression(token: Token, right: Object) -> InterpreterResult<Object> {
@@ -113,11 +130,15 @@ fn eval_if_expression(if_expr: crate::parser::ast::IfExpression) -> InterpreterR
     }
 }
 
-fn eval_statements(statements: Vec<Statement>) -> InterpreterResult<Object> {
+fn eval_program(statements: Vec<Statement>) -> InterpreterResult<Object> {
     let mut result = Object::Null(Null {});
 
     for statement in statements {
         result = eval(statement.into())?;
+
+        if let Object::Return(return_statement) = &result {
+            return Ok(*return_statement.value.clone());
+        }
     }
 
     Ok(result)
@@ -270,6 +291,39 @@ mod test {
                 }
                 (Object::Null(_), Object::Null(_)) => (),
                 (actual, exp) => panic!("integers or nulls expected, but got {actual} and {exp}"),
+            }
+        }
+    }
+
+    #[test]
+    fn return_evaluation_test() {
+        let expected = vec![
+            ("return 10;", 10),
+            ("return 10; 9;", 10),
+            ("return 2 * 5; 9;", 10),
+            ("9; return 2 * 5; 9;", 10),
+            (
+                r#"
+if (10 > 1) {
+    if (10 > 1) {
+        return 10;
+    }
+
+    return 1;
+}
+"#,
+                10,
+            ),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => {
+                    assert_eq!(int.value, expected_result)
+                }
+                actual => panic!("integer expected, but got {actual}"),
             }
         }
     }
