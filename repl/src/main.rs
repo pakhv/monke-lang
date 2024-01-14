@@ -28,10 +28,13 @@ fn main() -> Result<()> {
         let program = parser.parse_program();
 
         match program {
-            Ok(p) => {
-                let result = eval(p);
-                println!("{}\n", result.to_string());
-            }
+            Ok(p) => match eval(p) {
+                Ok(result) => println!("{}\n", result.to_string()),
+                Err(err) => {
+                    println!("{MONKEY_FACE}");
+                    println!("{err}");
+                }
+            },
             Err(err) => {
                 println!("{MONKEY_FACE}");
                 println!("{err}");
