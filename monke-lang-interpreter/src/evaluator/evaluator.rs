@@ -9,28 +9,28 @@ use super::types::{Boolean, Integer, Null, Object, Return};
 pub fn eval(program: Program) -> InterpreterResult<Object> {
     match program {
         Program::Statement(statement) => match statement {
-            Statement::Expression(expr) => Ok(eval(expr.expression.into())?),
-            Statement::Block(block) => Ok(eval_block_statement(block)?),
+            Statement::Expression(expr) => eval(expr.expression.into()),
+            Statement::Block(block) => eval_block_statement(block),
             Statement::Return(return_statement) => Ok(Object::Return(Return {
                 value: Box::new(eval(return_statement.return_value.into())?),
             })),
             _ => todo!(),
         },
-        Program::Statements(statements) => Ok(eval_program(statements)?),
+        Program::Statements(statements) => eval_program(statements),
         Program::Expression(expr) => match expr {
             Expression::IntegerLiteral(int) => Ok(Object::Integer(Integer { value: int.value })),
             Expression::Boolean(bool) => Ok(Object::Boolean(Boolean { value: bool.value })),
             Expression::Prefix(prefix) => {
                 let right = eval((*prefix.right).into())?;
-                Ok(eval_prefix_expression(prefix.token, right)?)
+                eval_prefix_expression(prefix.token, right)
             }
             Expression::Infix(infix) => {
                 let left = eval((*infix.left).into())?;
                 let right = eval((*infix.right).into())?;
 
-                Ok(eval_infix_expression(infix.token, left, right)?)
+                eval_infix_expression(infix.token, left, right)
             }
-            Expression::If(if_expr) => Ok(eval_if_expression(if_expr)?),
+            Expression::If(if_expr) => eval_if_expression(if_expr),
             _ => todo!(),
         },
         Program::Expressions(_) => todo!(),
@@ -61,11 +61,11 @@ fn eval_prefix_expression(token: Token, right: Object) -> InterpreterResult<Obje
         Token::Minus => match right {
             Object::Integer(int) => Ok(Object::Integer(Integer { value: -int.value })),
             expr => Err(format!(
-                "unable to evaluate prefix expression, Integer number must follow Minus token, but got {expr}"
+                "unable to evaluate prefix expression, Integer number must follow Minus token, but got \"{expr}\""
             )),
         },
         t => Err(format!(
-            "unable to evaluate prefix expression, ! or - tokens expected, but got {t}",
+            "unable to evaluate prefix expression, ! or - tokens expected, but got \"{t}\"",
         )),
     }
 }
@@ -98,18 +98,18 @@ fn eval_infix_expression(token: Token, left: Object, right: Object) -> Interpret
                 value: int_left.value != int_right.value,
             })),
             t => Err(format!(
-                "unable to evaluate infix expression; +,-,*,/,<,>,==,!= Tokens expected, but got {t}"
+                "unable to evaluate infix expression; +,-,*,/,<,>,==,!= Tokens expected, but got \"{t}\""
             )),
         },
         (Object::Boolean(bool_left),Object::Boolean(bool_right)) => match token {
             Token::Eq => Ok(Object::Boolean(Boolean { value: bool_left.value == bool_right.value })),
             Token::Ne=> Ok(Object::Boolean(Boolean { value: bool_left.value != bool_right.value })),
             t => Err(format!(
-                "unable to evaluate infix expression; == or != Tokens expected, but got {t}"
+                "unable to evaluate infix expression; == or != Tokens expected, but got \"{t}\""
             )),
         }
         (left, right) => Err(format!(
-            "unable to evaluate infix expression, Integer numbers expected, but got {left} {right}"
+            "unable to evaluate infix expression, Integer numbers expected, but got \"{left}\" \"{right}\""
         )),
     }
 }

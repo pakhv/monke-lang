@@ -500,6 +500,20 @@ mod tests {
         },
     };
 
+    fn parse_input(input: &str) -> Program {
+        let lexer = Lexer::new(String::from(input));
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program();
+
+        if let Err(err) = &program {
+            println!("{err}");
+        }
+
+        assert!(program.is_ok());
+        program.unwrap()
+    }
+
     #[test]
     fn let_statements_test() {
         let expected: Vec<(&str, Token, Expression)> = vec![
@@ -529,17 +543,7 @@ mod tests {
         ];
 
         for (input, let_ident, expression) in expected {
-            let lexer = Lexer::new(String::from(input));
-            let mut parser = Parser::new(lexer);
-
-            let program = parser.parse_program();
-
-            if let Err(err) = &program {
-                println!("{err}");
-            }
-
-            assert!(program.is_ok());
-            let program = program.unwrap();
+            let program = parse_input(input);
 
             let statements = match program {
                 Program::Statements(statements) => statements,
@@ -596,17 +600,7 @@ mod tests {
         ];
 
         for (input, expression) in expected {
-            let lexer = Lexer::new(String::from(input));
-            let mut parser = Parser::new(lexer);
-
-            let program = parser.parse_program();
-
-            if let Err(err) = &program {
-                println!("{err}");
-            }
-
-            assert!(program.is_ok());
-            let program = program.unwrap();
+            let program = parse_input(input);
 
             let statements = match program {
                 Program::Statements(statements) => statements,
@@ -653,17 +647,7 @@ mod tests {
     #[test]
     fn identifier_expression_test() {
         let input = "foobar;";
-        let lexer = Lexer::new(String::from(input));
-        let mut parser = Parser::new(lexer);
-
-        let program = parser.parse_program();
-
-        if let Err(err) = &program {
-            println!("{err}");
-        }
-
-        assert!(program.is_ok());
-        let program = program.unwrap();
+        let program = parse_input(input);
 
         let statements = match program {
             Program::Statements(statements) => statements,
@@ -688,17 +672,7 @@ mod tests {
     #[test]
     fn integer_literal_expression_test() {
         let input = "5;";
-        let lexer = Lexer::new(String::from(input));
-        let mut parser = Parser::new(lexer);
-
-        let program = parser.parse_program();
-
-        if let Err(err) = &program {
-            println!("{err}");
-        }
-
-        assert!(program.is_ok());
-        let program = program.unwrap();
+        let program = parse_input(input);
 
         let statements = match program {
             Program::Statements(statements) => statements,
@@ -759,17 +733,7 @@ mod tests {
         ];
 
         for (input, expected_token, expected_expr) in expected_expressions {
-            let lexer = Lexer::new(String::from(input));
-            let mut parser = Parser::new(lexer);
-
-            let program = parser.parse_program();
-
-            if let Err(err) = &program {
-                println!("{err}");
-            }
-
-            assert!(program.is_ok());
-            let program = program.unwrap();
+            let program = parse_input(input);
 
             let statements = match program {
                 Program::Statements(statements) => statements,
@@ -964,17 +928,7 @@ mod tests {
         ];
 
         for (input, expected_expr) in expected_expressions {
-            let lexer = Lexer::new(String::from(input));
-            let mut parser = Parser::new(lexer);
-
-            let program = parser.parse_program();
-
-            if let Err(err) = &program {
-                println!("{err}");
-            }
-
-            assert!(program.is_ok());
-            let program = program.unwrap();
+            let program = parse_input(input);
 
             let statements = match program {
                 Program::Statements(statements) => statements,
@@ -1064,18 +1018,7 @@ mod tests {
         ];
 
         for (input, expected) in expected_expressions {
-            let lexer = Lexer::new(String::from(input));
-            let mut parser = Parser::new(lexer);
-
-            let program = parser.parse_program();
-
-            if let Err(err) = &program {
-                println!("{err}");
-            }
-
-            assert!(program.is_ok());
-            let program = program.unwrap();
-
+            let program = parse_input(input);
             assert_eq!(program.to_string(), expected);
         }
     }
@@ -1088,17 +1031,7 @@ mod tests {
         ];
 
         for (input, has_alternative_statement) in expected {
-            let lexer = Lexer::new(String::from(input));
-            let mut parser = Parser::new(lexer);
-
-            let program = parser.parse_program();
-
-            if let Err(err) = &program {
-                println!("{err}");
-            }
-
-            assert!(program.is_ok());
-            let program = program.unwrap();
+            let program = parse_input(input);
 
             let statements = match program {
                 Program::Statements(statements) => statements,
@@ -1170,17 +1103,7 @@ mod tests {
     fn function_literal_test() {
         let input = "fn(x, y) { x + y; }";
 
-        let lexer = Lexer::new(String::from(input));
-        let mut parser = Parser::new(lexer);
-
-        let program = parser.parse_program();
-
-        if let Err(err) = &program {
-            println!("{err}");
-        }
-
-        assert!(program.is_ok());
-        let program = program.unwrap();
+        let program = parse_input(input);
 
         let statements = match program {
             Program::Statements(statements) => statements,
@@ -1250,17 +1173,7 @@ mod tests {
         ];
 
         for (input, params) in expected {
-            let lexer = Lexer::new(String::from(input));
-            let mut parser = Parser::new(lexer);
-
-            let program = parser.parse_program();
-
-            if let Err(err) = &program {
-                println!("{err}");
-            }
-
-            assert!(program.is_ok());
-            let program = program.unwrap();
+            let program = parse_input(input);
 
             let statements = match program {
                 Program::Statements(statements) => statements,
@@ -1289,17 +1202,7 @@ mod tests {
     fn call_expression_test() {
         let input = "add(1, 2 * 3, 4 + 5);";
 
-        let lexer = Lexer::new(String::from(input));
-        let mut parser = Parser::new(lexer);
-
-        let program = parser.parse_program();
-
-        if let Err(err) = &program {
-            println!("{err}");
-        }
-
-        assert!(program.is_ok());
-        let program = program.unwrap();
+        let program = parse_input(input);
 
         let statements = match program {
             Program::Statements(statements) => statements,
