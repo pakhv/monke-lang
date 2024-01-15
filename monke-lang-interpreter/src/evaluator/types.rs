@@ -1,4 +1,8 @@
-use std::fmt::Display;
+use std::{cell::RefCell, fmt::Display, rc::Rc};
+
+use crate::parser::ast::{BlockStatement, Identifier};
+
+use super::environment::Environment;
 
 #[derive(Debug, Clone)]
 pub enum Object {
@@ -6,6 +10,7 @@ pub enum Object {
     Boolean(Boolean),
     Null(Null),
     Return(Return),
+    Function(Function),
 }
 
 impl Display for Object {
@@ -15,6 +20,7 @@ impl Display for Object {
             Object::Boolean(bool) => write!(f, "{bool}"),
             Object::Null(null) => write!(f, "{null}"),
             Object::Return(return_statement) => write!(f, "{return_statement}"),
+            Object::Function(func) => write!(f, "{func}"),
         }
     }
 }
@@ -58,5 +64,26 @@ pub struct Return {
 impl Display for Return {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value.to_string())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub parameters: Vec<Identifier>,
+    pub body: BlockStatement,
+    pub env: Rc<RefCell<Environment>>,
+}
+
+impl Display for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params = self
+            .parameters
+            .iter()
+            .map(|p| p.to_string())
+            .reduce(|acc, cur| format!("{acc}, {cur}"))
+            .unwrap_or(String::new());
+
+        // rip indentation
+        write!(f, "fn({params}) {{\n{}\n}}", self.body)
     }
 }

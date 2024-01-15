@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     lexer::token::Token,
     parser::ast::{Expression, Program, Statement},
@@ -6,10 +8,10 @@ use crate::{
 
 use super::{
     environment::Environment,
-    types::{Boolean, Integer, Null, Object, Return},
+    types::{Boolean, Function, Integer, Null, Object, Return},
 };
 
-pub fn eval(program: Program, env: &mut Environment) -> InterpreterResult<Object> {
+pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResult<Object> {
     match program {
         Program::Statement(statement) => match statement {
             Statement::Expression(expr) => eval(expr.expression.into(), env),
@@ -18,14 +20,10 @@ pub fn eval(program: Program, env: &mut Environment) -> InterpreterResult<Object
                 value: Box::new(eval(return_statement.return_value.into(), env)?),
             })),
             Statement::Let(let_statement) => {
-                let value = eval(let_statement.value.into(), env)?;
+                let value = eval(let_statement.value.into(), Rc::clone(&env))?;
 
-                let value_key = match let_statement.name.token {
-                    Token::Ident(key) => key,
-                    _ => return Err(String::from("somehow Palpatine returned")),
-                };
-
-                Ok(env.set(value_key, value))
+                let value_key = let_statement.name.token.to_string();
+                Ok(env.borrow_mut().set(value_key, value))
             }
         },
         Program::Statements(statements) => eval_program(statements, env),
@@ -37,19 +35,16 @@ pub fn eval(program: Program, env: &mut Environment) -> InterpreterResult<Object
                 eval_prefix_expression(prefix.token, right)
             }
             Expression::Infix(infix) => {
-                let left = eval((*infix.left).into(), env)?;
+                let left = eval((*infix.left).into(), Rc::clone(&env))?;
                 let right = eval((*infix.right).into(), env)?;
 
                 eval_infix_expression(infix.token, left, right)
             }
             Expression::If(if_expr) => eval_if_expression(if_expr, env),
             Expression::Identifier(ident) => {
-                let value_key = match ident.token {
-                    Token::Ident(key) => key,
-                    _ => return Err(String::from("somehow Palpatine returned")),
-                };
+                let value_key = ident.token.to_string();
 
-                match env.get(&value_key) {
+                match env.borrow().get(&value_key) {
                     Some(obj) => Ok(obj),
                     None => {
                         return Err(format!(
@@ -58,20 +53,73 @@ pub fn eval(program: Program, env: &mut Environment) -> InterpreterResult<Object
                     }
                 }
             }
-            _ => todo!(),
+            Expression::FunctionLiteral(func) => Ok(Object::Function(Function {
+                parameters: func.parameters,
+                body: func.body,
+                env,
+            })),
+            Expression::Call(call) => {
+                let function = eval((*call.function).into(), Rc::clone(&env))?;
+                let args = eval_expressions(call.arguments, env)?;
+
+                apply_function(function, args)
+            }
         },
         Program::Expressions(_) => todo!(),
     }
 }
 
+fn apply_function(function: Object, args: Vec<Object>) -> InterpreterResult<Object> {
+    match function {
+        Object::Function(func) => {
+            let extended_env = extend_function_environment(func.clone(), args);
+            let evaluated = eval(
+                Program::Statement(Statement::Block(func.body)),
+                extended_env,
+            )?;
+
+            match evaluated {
+                Object::Return(return_obj) => Ok(*return_obj.value),
+                _ => Ok(evaluated),
+            }
+        }
+        actual => Err(format!(
+            "unable to evaluate function call, function excpected, but got \"{actual}\""
+        )),
+    }
+}
+
+fn extend_function_environment(func: Function, args: Vec<Object>) -> Rc<RefCell<Environment>> {
+    let mut env = Environment::new_outer(func.env);
+
+    for (idx, param) in func.parameters.iter().enumerate() {
+        env.set(param.token.to_string(), args.get(idx).unwrap().clone());
+    }
+
+    Rc::new(RefCell::new(env))
+}
+
+fn eval_expressions(
+    arguments: Vec<Expression>,
+    env: Rc<RefCell<Environment>>,
+) -> InterpreterResult<Vec<Object>> {
+    let mut result = vec![];
+
+    for arg in arguments {
+        result.push(eval(arg.into(), Rc::clone(&env))?);
+    }
+
+    Ok(result)
+}
+
 fn eval_block_statement(
     block: crate::parser::ast::BlockStatement,
-    env: &mut Environment,
+    env: Rc<RefCell<Environment>>,
 ) -> InterpreterResult<Object> {
     let mut result = Object::Null(Null {});
 
     for statement in block.statements {
-        result = eval(statement.into(), env)?;
+        result = eval(statement.into(), Rc::clone(&env))?;
 
         if let Object::Return(_) = result {
             return Ok(result);
@@ -146,9 +194,9 @@ fn eval_infix_expression(token: Token, left: Object, right: Object) -> Interpret
 
 fn eval_if_expression(
     if_expr: crate::parser::ast::IfExpression,
-    env: &mut Environment,
+    env: Rc<RefCell<Environment>>,
 ) -> InterpreterResult<Object> {
-    let is_truthy = match eval((*if_expr.condition).into(), env)? {
+    let is_truthy = match eval((*if_expr.condition).into(), Rc::clone(&env))? {
         Object::Boolean(bool) => bool.value,
         Object::Null(_) => false,
         _ => true,
@@ -163,11 +211,14 @@ fn eval_if_expression(
     }
 }
 
-fn eval_program(statements: Vec<Statement>, env: &mut Environment) -> InterpreterResult<Object> {
+fn eval_program(
+    statements: Vec<Statement>,
+    env: Rc<RefCell<Environment>>,
+) -> InterpreterResult<Object> {
     let mut result = Object::Null(Null {});
 
     for statement in statements {
-        result = eval(statement.into(), env)?;
+        result = eval(statement.into(), Rc::clone(&env))?;
 
         if let Object::Return(return_statement) = &result {
             return Ok(*return_statement.value.clone());
@@ -179,6 +230,8 @@ fn eval_program(statements: Vec<Statement>, env: &mut Environment) -> Interprete
 
 #[cfg(test)]
 mod test {
+    use std::{cell::RefCell, rc::Rc};
+
     use crate::{
         evaluator::{
             environment::Environment,
@@ -202,8 +255,8 @@ mod test {
         assert!(program.is_ok());
         let program = program.unwrap();
 
-        let mut env = Environment::new();
-        let result = eval(program, &mut env);
+        let env = Environment::new();
+        let result = eval(program, Rc::new(RefCell::new(env)));
 
         if let Err(err) = &result {
             println!("{err}");
@@ -321,9 +374,7 @@ mod test {
             let result = evaluate_input(input.to_string());
 
             match (result, expected_result) {
-                (Object::Integer(int), Object::Integer(exp)) => {
-                    assert_eq!(int.value, exp.value)
-                }
+                (Object::Integer(int), Object::Integer(exp)) => assert_eq!(int.value, exp.value),
                 (Object::Null(_), Object::Null(_)) => (),
                 (actual, exp) => panic!("integers or nulls expected, but got {actual} and {exp}"),
             }
@@ -376,11 +427,63 @@ if (10 > 1) {
             let result = evaluate_input(input.to_string());
 
             match result {
-                Object::Integer(int) => {
-                    assert_eq!(int.value, expected_result)
-                }
+                Object::Integer(int) => assert_eq!(int.value, expected_result),
                 actual => panic!("integer expected, but got {actual}"),
             }
+        }
+    }
+
+    #[test]
+    fn function_evaluation_test() {
+        let input = "fn(x) { x + 2; };";
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::Function(func) => {
+                assert_eq!(func.parameters.len(), 1);
+                assert_eq!(func.parameters.first().unwrap().to_string(), "x");
+                assert_eq!(func.body.to_string(), "(x + 2)");
+            }
+            actual => panic!("function expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn function_application_evaluation_test() {
+        let expected = vec![
+            ("let identity = fn(x) { x; }; identity(5);", 5),
+            ("let identity = fn(x) { return x; }; identity(5);", 5),
+            ("let double = fn(x) { x * 2; }; double(5);", 10),
+            ("let add = fn(x, y) { x + y; }; add(5, 5);", 10),
+            ("let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20),
+            ("fn(x) { x; }(5)", 5),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => assert_eq!(int.value, expected_result),
+                actual => panic!("integer expected, but got {actual}"),
+            }
+        }
+    }
+
+    #[test]
+    fn closure_test() {
+        let input = r#"
+let newAdder = fn(x) {
+fn(y) { x + y };
+};
+let addTwo = newAdder(2);
+addTwo(2);"#;
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::Integer(int) => assert_eq!(int.value, 4),
+            actual => panic!("integer expected, but got {actual}"),
         }
     }
 }

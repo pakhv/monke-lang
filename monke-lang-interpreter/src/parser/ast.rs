@@ -296,6 +296,6 @@ impl Display for BlockStatement {
             .reduce(|acc, cur| format!("{acc} {cur}"))
             .unwrap_or(String::new());
 
-        write!(f, "{{ {block} }}")
+        write!(f, "{block}")
     }
 }
