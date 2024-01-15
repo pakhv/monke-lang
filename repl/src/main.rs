@@ -1,5 +1,5 @@
 use monke_lang_interpreter::{
-    evaluator::{environment::Environment, evaluator::eval},
+    evaluator::{environment::Environment, evaluator::eval, types::Object},
     lexer::lexer::Lexer,
     parser::parser::Parser,
 };
@@ -38,7 +38,10 @@ fn main() -> Result<()> {
 
         match program {
             Ok(p) => match eval(p, Rc::clone(&env)) {
-                Ok(result) => println!("{}\n", result.to_string()),
+                Ok(result) => match result {
+                    Object::Function(_) => (),
+                    _ => println!("{}\n", result),
+                },
                 Err(err) => {
                     println!("{MONKEY_FACE}");
                     println!("{err}");
