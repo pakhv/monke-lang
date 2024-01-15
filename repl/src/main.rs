@@ -1,5 +1,7 @@
 use monke_lang_interpreter::{
-    evaluator::evaluator::eval, lexer::lexer::Lexer, parser::parser::Parser,
+    evaluator::{environment::Environment, evaluator::eval},
+    lexer::lexer::Lexer,
+    parser::parser::Parser,
 };
 use std::io::{self, Result, Write};
 
@@ -21,6 +23,8 @@ fn main() -> Result<()> {
     io::stdout().write_all(b"Enter your monke code\n>> ")?;
     io::stdout().flush()?;
 
+    let mut env = Environment::new();
+
     while let Ok(_) = io::stdin().read_line(&mut buffer) {
         let lexer = Lexer::new(buffer.clone());
         let mut parser = Parser::new(lexer);
@@ -28,7 +32,7 @@ fn main() -> Result<()> {
         let program = parser.parse_program();
 
         match program {
-            Ok(p) => match eval(p) {
+            Ok(p) => match eval(p, &mut env) {
                 Ok(result) => println!("{}\n", result.to_string()),
                 Err(err) => {
                     println!("{MONKEY_FACE}");

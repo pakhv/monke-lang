@@ -4,44 +4,74 @@ use crate::{
     result::InterpreterResult,
 };
 
-use super::types::{Boolean, Integer, Null, Object, Return};
+use super::{
+    environment::Environment,
+    types::{Boolean, Integer, Null, Object, Return},
+};
 
-pub fn eval(program: Program) -> InterpreterResult<Object> {
+pub fn eval(program: Program, env: &mut Environment) -> InterpreterResult<Object> {
     match program {
         Program::Statement(statement) => match statement {
-            Statement::Expression(expr) => eval(expr.expression.into()),
-            Statement::Block(block) => eval_block_statement(block),
+            Statement::Expression(expr) => eval(expr.expression.into(), env),
+            Statement::Block(block) => eval_block_statement(block, env),
             Statement::Return(return_statement) => Ok(Object::Return(Return {
-                value: Box::new(eval(return_statement.return_value.into())?),
+                value: Box::new(eval(return_statement.return_value.into(), env)?),
             })),
-            _ => todo!(),
+            Statement::Let(let_statement) => {
+                let value = eval(let_statement.value.into(), env)?;
+
+                let value_key = match let_statement.name.token {
+                    Token::Ident(key) => key,
+                    _ => return Err(String::from("somehow Palpatine returned")),
+                };
+
+                Ok(env.set(value_key, value))
+            }
         },
-        Program::Statements(statements) => eval_program(statements),
+        Program::Statements(statements) => eval_program(statements, env),
         Program::Expression(expr) => match expr {
             Expression::IntegerLiteral(int) => Ok(Object::Integer(Integer { value: int.value })),
             Expression::Boolean(bool) => Ok(Object::Boolean(Boolean { value: bool.value })),
             Expression::Prefix(prefix) => {
-                let right = eval((*prefix.right).into())?;
+                let right = eval((*prefix.right).into(), env)?;
                 eval_prefix_expression(prefix.token, right)
             }
             Expression::Infix(infix) => {
-                let left = eval((*infix.left).into())?;
-                let right = eval((*infix.right).into())?;
+                let left = eval((*infix.left).into(), env)?;
+                let right = eval((*infix.right).into(), env)?;
 
                 eval_infix_expression(infix.token, left, right)
             }
-            Expression::If(if_expr) => eval_if_expression(if_expr),
+            Expression::If(if_expr) => eval_if_expression(if_expr, env),
+            Expression::Identifier(ident) => {
+                let value_key = match ident.token {
+                    Token::Ident(key) => key,
+                    _ => return Err(String::from("somehow Palpatine returned")),
+                };
+
+                match env.get(&value_key) {
+                    Some(obj) => Ok(obj),
+                    None => {
+                        return Err(format!(
+                            "unable to evaluate identifier, identifier \"{value_key}\" not found"
+                        ))
+                    }
+                }
+            }
             _ => todo!(),
         },
         Program::Expressions(_) => todo!(),
     }
 }
 
-fn eval_block_statement(block: crate::parser::ast::BlockStatement) -> InterpreterResult<Object> {
+fn eval_block_statement(
+    block: crate::parser::ast::BlockStatement,
+    env: &mut Environment,
+) -> InterpreterResult<Object> {
     let mut result = Object::Null(Null {});
 
     for statement in block.statements {
-        result = eval(statement.into())?;
+        result = eval(statement.into(), env)?;
 
         if let Object::Return(_) = result {
             return Ok(result);
@@ -114,27 +144,30 @@ fn eval_infix_expression(token: Token, left: Object, right: Object) -> Interpret
     }
 }
 
-fn eval_if_expression(if_expr: crate::parser::ast::IfExpression) -> InterpreterResult<Object> {
-    let is_truthy = match eval((*if_expr.condition).into())? {
+fn eval_if_expression(
+    if_expr: crate::parser::ast::IfExpression,
+    env: &mut Environment,
+) -> InterpreterResult<Object> {
+    let is_truthy = match eval((*if_expr.condition).into(), env)? {
         Object::Boolean(bool) => bool.value,
         Object::Null(_) => false,
         _ => true,
     };
 
     match is_truthy {
-        true => Ok(eval(Statement::Block(if_expr.consequence).into())?),
+        true => Ok(eval(Statement::Block(if_expr.consequence).into(), env)?),
         false => match if_expr.alternative {
-            Some(alt) => Ok(eval(Statement::Block(alt).into())?),
+            Some(alt) => Ok(eval(Statement::Block(alt).into(), env)?),
             None => Ok(Object::Null(Null {})),
         },
     }
 }
 
-fn eval_program(statements: Vec<Statement>) -> InterpreterResult<Object> {
+fn eval_program(statements: Vec<Statement>, env: &mut Environment) -> InterpreterResult<Object> {
     let mut result = Object::Null(Null {});
 
     for statement in statements {
-        result = eval(statement.into())?;
+        result = eval(statement.into(), env)?;
 
         if let Object::Return(return_statement) = &result {
             return Ok(*return_statement.value.clone());
@@ -148,6 +181,7 @@ fn eval_program(statements: Vec<Statement>) -> InterpreterResult<Object> {
 mod test {
     use crate::{
         evaluator::{
+            environment::Environment,
             evaluator::eval,
             types::{Integer, Null, Object},
         },
@@ -168,7 +202,8 @@ mod test {
         assert!(program.is_ok());
         let program = program.unwrap();
 
-        let result = eval(program);
+        let mut env = Environment::new();
+        let result = eval(program, &mut env);
 
         if let Err(err) = &result {
             println!("{err}");
@@ -314,6 +349,27 @@ if (10 > 1) {
 "#,
                 10,
             ),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => {
+                    assert_eq!(int.value, expected_result)
+                }
+                actual => panic!("integer expected, but got {actual}"),
+            }
+        }
+    }
+
+    #[test]
+    fn let_statement_evaluation_test() {
+        let expected = vec![
+            ("let a = 5; a;", 5),
+            ("let a = 5 * 5; a;", 25),
+            ("let a = 5; let b = a; b;", 5),
+            ("let a = 5; let b = a; let c = a + b + 5; c;", 15),
         ];
 
         for (input, expected_result) in expected {
