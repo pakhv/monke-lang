@@ -6,6 +6,7 @@ pub enum Token {
     // Identifiers + literals
     Ident(String),
     Int(String),
+    String(String),
     // Operators
     Assign,
     Plus,
@@ -80,6 +81,7 @@ impl Display for Token {
             Token::If => write!(f, "if"),
             Token::Else => write!(f, "else"),
             Token::Return => write!(f, "return"),
+            Token::String(string) => write!(f, "{string}"),
         }
     }
 }

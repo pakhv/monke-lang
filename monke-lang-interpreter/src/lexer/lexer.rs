@@ -40,6 +40,12 @@ impl Lexer {
                 '>' => self.advance_and_return(Token::Gt),
                 '=' => self.peek_conditional('=', Token::Eq, Token::Assign),
                 '!' => self.peek_conditional('=', Token::Ne, Token::Bang),
+                '"' => {
+                    self.advance();
+                    let string = self.read_while(|c| c != '"');
+                    self.advance();
+                    Some(Token::String(string))
+                }
                 ch if is_letter(ch) => {
                     let ident = self.read_while(is_letter);
                     Some(lookup_ident(ident))
@@ -161,7 +167,10 @@ if (5 < 10) {
 }
 
 10 == 10;
-10 != 9;"#;
+10 != 9;
+"foobar"
+"foo bar"
+"#;
 
         let mut lexer = Lexer::new(String::from(input));
 
@@ -239,6 +248,8 @@ if (5 < 10) {
             Token::Ne,
             Token::Int(String::from("9")),
             Token::Semicolon,
+            Token::String(String::from("foobar")),
+            Token::String(String::from("foo bar")),
         ];
 
         for expected_token in expected_tokens {
