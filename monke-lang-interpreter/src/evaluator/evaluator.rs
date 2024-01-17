@@ -8,7 +8,7 @@ use crate::{
 
 use super::{
     environment::Environment,
-    types::{Boolean, Function, Integer, Null, Object, Return},
+    types::{Boolean, Function, Integer, Null, Object, Return, Str},
 };
 
 pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResult<Object> {
@@ -64,6 +64,9 @@ pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResul
 
                 apply_function(function, args)
             }
+            Expression::StringLiteral(string) => Ok(Object::String(Str {
+                value: string.token.to_string(),
+            })),
         },
         Program::Expressions(_) => todo!(),
     }
@@ -176,18 +179,22 @@ fn eval_infix_expression(token: Token, left: Object, right: Object) -> Interpret
                 value: int_left.value != int_right.value,
             })),
             t => Err(format!(
-                "unable to evaluate infix expression; +,-,*,/,<,>,==,!= Tokens expected, but got \"{t}\""
+                "unable to evaluate infix expression for Integers; +,-,*,/,<,>,==,!= Tokens expected, but got \"{t}\""
             )),
         },
         (Object::Boolean(bool_left),Object::Boolean(bool_right)) => match token {
             Token::Eq => Ok(Object::Boolean(Boolean { value: bool_left.value == bool_right.value })),
             Token::Ne=> Ok(Object::Boolean(Boolean { value: bool_left.value != bool_right.value })),
             t => Err(format!(
-                "unable to evaluate infix expression; == or != Tokens expected, but got \"{t}\""
+                "unable to evaluate infix expression for Booleans; == or != Tokens expected, but got \"{t}\""
             )),
+        },
+        (Object::String(string_left), Object::String(string_right)) => match token {
+            Token::Plus => Ok(Object::String(Str { value: format!("{string_left}{string_right}") })),
+            t => Err(format!("unable to evaluate infix expression for Strings; + Token expected, but got \"{t}\""))
         }
         (left, right) => Err(format!(
-            "unable to evaluate infix expression, Integer numbers expected, but got \"{left}\" \"{right}\""
+            "unable to evaluate infix expression; Integers, Booleans or Strings expected, but got \"{left}\" \"{right}\""
         )),
     }
 }
@@ -484,6 +491,30 @@ addTwo(2);"#;
         match result {
             Object::Integer(int) => assert_eq!(int.value, 4),
             actual => panic!("integer expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn string_literal_evaluation_test() {
+        let input = r#""Hello World!""#;
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::String(string) => assert_eq!(string.value, "Hello World!"),
+            actual => panic!("string expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn string_concatination_evaluation_test() {
+        let input = r#""Hello" + " " + "World!""#;
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::String(string) => assert_eq!(string.value, "Hello World!"),
+            actual => panic!("string expected, but got {actual}"),
         }
     }
 }

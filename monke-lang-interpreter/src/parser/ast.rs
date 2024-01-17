@@ -23,6 +23,7 @@ pub enum Program {
 pub enum Expression {
     Identifier(Identifier),
     IntegerLiteral(IntegerLiteral),
+    StringLiteral(StringLiteral),
     Prefix(PrefixExpression),
     Infix(InfixExpression),
     Boolean(Boolean),
@@ -81,6 +82,7 @@ impl Display for Expression {
             Expression::If(if_expr) => write!(f, "{if_expr}"),
             Expression::FunctionLiteral(func) => write!(f, "{func}"),
             Expression::Call(call) => write!(f, "{call}"),
+            Expression::StringLiteral(string) => write!(f, "{string}"),
         }
     }
 }
@@ -138,6 +140,17 @@ pub struct IntegerLiteral {
 }
 
 impl Display for IntegerLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.token)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StringLiteral {
+    pub token: Token,
+}
+
+impl Display for StringLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.token)
     }

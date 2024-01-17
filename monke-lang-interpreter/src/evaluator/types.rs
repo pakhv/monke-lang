@@ -11,6 +11,7 @@ pub enum Object {
     Null(Null),
     Return(Return),
     Function(Function),
+    String(Str),
 }
 
 impl Display for Object {
@@ -21,6 +22,7 @@ impl Display for Object {
             Object::Null(null) => write!(f, "{null}"),
             Object::Return(return_statement) => write!(f, "{return_statement}"),
             Object::Function(func) => write!(f, "{func}"),
+            Object::String(string) => write!(f, "{string}"),
         }
     }
 }
@@ -85,5 +87,16 @@ impl Display for Function {
 
         // rip indentation
         write!(f, "fn({params}) {{\n{}\n}}", self.body)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Str {
+    pub value: String,
+}
+
+impl Display for Str {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
     }
 }

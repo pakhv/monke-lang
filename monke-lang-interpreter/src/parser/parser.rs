@@ -2,7 +2,7 @@ use super::super::result::InterpreterResult;
 use super::ast::{
     BlockStatement, Boolean, CallExpression, Expression, FunctionLiteral, Identifier, IfExpression,
     InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement,
-    Statement,
+    Statement, StringLiteral,
 };
 use crate::lexer::{lexer::Lexer, token::Token};
 use crate::parser::ast::{ExpressionStatement, ExpressionType};
@@ -196,6 +196,7 @@ impl Parser {
                 Token::Lparen => Ok(Self::parse_grouped_expression),
                 Token::If => Ok(Self::parse_if_expression),
                 Token::Function => Ok(Self::parse_function_literal),
+                Token::String(_) => Ok(Self::parse_string),
                 _ => todo!(),
             },
             None => Err(String::from(
@@ -466,6 +467,12 @@ impl Parser {
         }
 
         Ok(arguments)
+    }
+
+    fn parse_string(parser: &mut Parser) -> InterpreterResult<Expression> {
+        Ok(Expression::StringLiteral(StringLiteral {
+            token: parser.cur_token.clone().unwrap(),
+        }))
     }
 }
 
@@ -1258,5 +1265,27 @@ mod tests {
                 call_expression.arguments
             ),
         };
+    }
+
+    #[test]
+    fn string_literal_test() {
+        let input = "\"hello world!\"";
+
+        let program = parse_input(input);
+        let statements = match program {
+            Program::Statements(statements) => statements,
+            actual => panic!("statements expected, but got {actual}"),
+        };
+        assert_eq!(statements.len(), 1);
+
+        match statements.first().unwrap() {
+            Statement::Expression(expr) => match &expr.expression {
+                Expression::StringLiteral(string) => {
+                    assert_eq!(string.token.to_string(), "hello world!")
+                }
+                actual => panic!("string literal expected, got {actual}"),
+            },
+            actual => panic!("string literal expected, got {actual}"),
+        }
     }
 }
