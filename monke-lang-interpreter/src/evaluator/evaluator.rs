@@ -8,7 +8,7 @@ use crate::{
 
 use super::{
     environment::Environment,
-    types::{Boolean, Function, Integer, Null, Object, Return, Str},
+    types::{Boolean, BuiltinFunction, Function, Integer, Null, Object, Return, Str},
 };
 
 pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResult<Object> {
@@ -46,11 +46,12 @@ pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResul
 
                 match env.borrow().get(&value_key) {
                     Some(obj) => Ok(obj),
-                    None => {
-                        return Err(format!(
+                    None => match get_builtin_function(&value_key) {
+                        Some(builtin) => Ok(builtin),
+                        None => Err(format!(
                             "unable to evaluate identifier, identifier \"{value_key}\" not found"
-                        ))
-                    }
+                        )),
+                    },
                 }
             }
             Expression::FunctionLiteral(func) => Ok(Object::Function(Function {
@@ -86,6 +87,7 @@ fn apply_function(function: Object, args: Vec<Object>) -> InterpreterResult<Obje
                 _ => Ok(evaluated),
             }
         }
+        Object::Builtin(builtin) => builtin.0(args),
         actual => Err(format!(
             "unable to evaluate function call, function excpected, but got \"{actual}\""
         )),
@@ -233,6 +235,31 @@ fn eval_program(
     }
 
     Ok(result)
+}
+
+fn get_builtin_function(fn_name: &str) -> Option<Object> {
+    match fn_name {
+        "len" => Some(Object::Builtin(BuiltinFunction(len_builtin))),
+        _ => None,
+    }
+}
+
+fn len_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+    if args.len() != 1 {
+        return Err(format!(
+            "wrong number of arguments for len function, 1 argument expected, but got {}",
+            args.len()
+        ));
+    }
+
+    match args.first().unwrap() {
+        Object::String(string) => Ok(Object::Integer(Integer {
+            value: string.value.len() as i64,
+        })),
+        actual => Err(format!(
+            "argument to len function is not supported, String expected, but got {actual}"
+        )),
+    }
 }
 
 #[cfg(test)]
@@ -515,6 +542,24 @@ addTwo(2);"#;
         match result {
             Object::String(string) => assert_eq!(string.value, "Hello World!"),
             actual => panic!("string expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn builtin_evaluation_test() {
+        let expected = vec![
+            ("len(\"\")", 0),
+            ("len(\"four\")", 4),
+            ("len(\"hello world\")", 11),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => assert_eq!(int.value, expected_result),
+                actual => panic!("integer expected, but got {actual}"),
+            }
         }
     }
 }

@@ -1,6 +1,9 @@
 use std::{cell::RefCell, fmt::Display, rc::Rc};
 
-use crate::parser::ast::{BlockStatement, Identifier};
+use crate::{
+    parser::ast::{BlockStatement, Identifier},
+    result::InterpreterResult,
+};
 
 use super::environment::Environment;
 
@@ -12,6 +15,7 @@ pub enum Object {
     Return(Return),
     Function(Function),
     String(Str),
+    Builtin(BuiltinFunction),
 }
 
 impl Display for Object {
@@ -23,6 +27,7 @@ impl Display for Object {
             Object::Return(return_statement) => write!(f, "{return_statement}"),
             Object::Function(func) => write!(f, "{func}"),
             Object::String(string) => write!(f, "{string}"),
+            Object::Builtin(builtin) => write!(f, "{builtin}"),
         }
     }
 }
@@ -98,5 +103,14 @@ pub struct Str {
 impl Display for Str {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BuiltinFunction(pub fn(args: Vec<Object>) -> InterpreterResult<Object>);
+
+impl Display for BuiltinFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "builtin function")
     }
 }
