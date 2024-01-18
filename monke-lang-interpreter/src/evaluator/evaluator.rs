@@ -71,7 +71,25 @@ pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResul
             Expression::ArrayLiteral(array) => Ok(Object::Array(Array {
                 elements: eval_expressions(array.elements, env)?,
             })),
-            _ => todo!(),
+            Expression::IndexExpression(index_expr) => {
+                let left = eval((*index_expr.left).into(), Rc::clone(&env))?;
+                let index = eval((*index_expr.index).into(), env)?;
+
+                match (left, index) {
+                    (Object::Array(array), Object::Integer(idx)) => {
+                        let max_idx = array.elements.len() - 1;
+
+                        if idx.value < 0 || idx.value as usize > max_idx {
+                            return Ok(Object::Null(Null {}));
+                        }
+
+                        Ok(array.elements.get(idx.value as usize).cloned().unwrap())
+                    }
+                    (actual_left, actual_index) => Err(format!(
+                        "index operator not supported for \"{actual_left}\" and \"{actual_index}\""
+                    )),
+                }
+            }
         },
         Program::Expressions(_) => todo!(),
     }
@@ -244,6 +262,10 @@ fn eval_program(
 fn get_builtin_function(fn_name: &str) -> Option<Object> {
     match fn_name {
         "len" => Some(Object::Builtin(BuiltinFunction(len_builtin))),
+        "first" => Some(Object::Builtin(BuiltinFunction(first_builtin))),
+        "last" => Some(Object::Builtin(BuiltinFunction(last_builtin))),
+        "rest" => Some(Object::Builtin(BuiltinFunction(rest_builtin))),
+        "push" => Some(Object::Builtin(BuiltinFunction(push_builtin))),
         _ => None,
     }
 }
@@ -260,8 +282,97 @@ fn len_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
         Object::String(string) => Ok(Object::Integer(Integer {
             value: string.value.len() as i64,
         })),
+        Object::Array(array) => Ok(Object::Integer(Integer {
+            value: array.elements.len() as i64,
+        })),
         actual => Err(format!(
             "argument to len function is not supported, String expected, but got {actual}"
+        )),
+    }
+}
+
+fn first_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+    if args.len() != 1 {
+        return Err(format!(
+            "wrong number of arguments for first function, 1 argument expected, but got {}",
+            args.len()
+        ));
+    }
+
+    match args.first().unwrap() {
+        Object::Array(array) => match array.elements.len() {
+            0 => Ok(Object::Null(Null {})),
+            _ => Ok(array.elements.get(0).cloned().unwrap()),
+        },
+        actual => Err(format!(
+            "argument to first function is not supported, Array expected, but got {actual}"
+        )),
+    }
+}
+
+fn last_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+    if args.len() != 1 {
+        return Err(format!(
+            "wrong number of arguments for last function, 1 argument expected, but got {}",
+            args.len()
+        ));
+    }
+
+    match args.first().unwrap() {
+        Object::Array(array) => match array.elements.len() {
+            0 => Ok(Object::Null(Null {})),
+            _ => Ok(array
+                .elements
+                .get(array.elements.len() - 1)
+                .cloned()
+                .unwrap()),
+        },
+        actual => Err(format!(
+            "argument to last function is not supported, Array expected, but got {actual}"
+        )),
+    }
+}
+
+fn rest_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+    if args.len() != 1 {
+        return Err(format!(
+            "wrong number of arguments for rest function, 1 argument expected, but got {}",
+            args.len()
+        ));
+    }
+
+    match args.first().unwrap() {
+        Object::Array(array) => match array.elements.len() {
+            0 => Ok(Object::Null(Null {})),
+            _ => Ok(Object::Array(Array {
+                elements: array.elements[1..].to_vec(),
+            })),
+        },
+        actual => Err(format!(
+            "argument to rest function is not supported, Array expected, but got {actual}"
+        )),
+    }
+}
+
+fn push_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+    if args.len() != 2 {
+        return Err(format!(
+            "wrong number of arguments for push function, 2 argument expected, but got {}",
+            args.len()
+        ));
+    }
+
+    match args.first().unwrap() {
+        Object::Array(array) => {
+            let mut new_elements = array.elements.clone();
+            new_elements.push(args.get(1).cloned().unwrap());
+
+            Ok(Object::Array(Array {
+                elements: new_elements,
+            }))
+        }
+        actual => Err(format!(
+            "argument to push function is not supported, Array expected, but got {actual}"
         )),
     }
 }
@@ -555,6 +666,9 @@ addTwo(2);"#;
             ("len(\"\")", 0),
             ("len(\"four\")", 4),
             ("len(\"hello world\")", 11),
+            ("len([1, 4, 9, 5])", 4),
+            ("first([1, 4, 9, 5])", 1),
+            ("last([1, 4, 9, 5])", 5),
         ];
 
         for (input, expected_result) in expected {
@@ -593,6 +707,84 @@ addTwo(2);"#;
                 }
             }
             actual => panic!("array expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn array_index_expression_test() {
+        let expected = vec![
+            ("[1, 2, 3][0]", 1),
+            ("[1, 2, 3][1]", 2),
+            ("[1, 2, 3][2]", 3),
+            ("let i = 0; [1][i];", 1),
+            ("[1, 2, 3][1 + 1];", 3),
+            ("let myArray = [1, 2, 3]; myArray[2];", 3),
+            (
+                "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
+                6,
+            ),
+            ("let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]", 2),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => assert_eq!(int.value, expected_result),
+                actual => panic!("integer expected, but got {actual}"),
+            }
+        }
+    }
+
+    #[test]
+    fn array_builtins_test() {
+        let expected = vec![
+            (
+                r#"
+let map = fn(arr, f) {
+    let iter = fn(arr, accumulated) {
+        if (len(arr) == 0) {
+            accumulated
+        } else {
+            iter(rest(arr), push(accumulated, f(first(arr))));
+        }
+    };
+
+    iter(arr, []);
+};
+
+let a = [1, 2, 3, 4];
+let double = fn(x) { x * 2 };
+map(a, double);
+"#,
+                "[2, 4, 6, 8]",
+            ),
+            (
+                r#"
+let reduce = fn(arr, initial, f) {
+    let iter = fn(arr, result) {
+        if (len(arr) == 0) {
+            result
+        } else {
+            iter(rest(arr), f(result, first(arr)));
+        }
+    };
+    iter(arr, initial);
+};
+
+let sum = fn(arr) {
+    reduce(arr, 0, fn(initial, el) { initial + el });
+};
+sum([1, 2, 3, 4, 5]);
+"#,
+                "15",
+            ),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            assert_eq!(result.to_string(), expected_result);
         }
     }
 }
