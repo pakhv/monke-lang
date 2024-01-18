@@ -16,6 +16,7 @@ pub enum Object {
     Function(Function),
     String(Str),
     Builtin(BuiltinFunction),
+    Array(Array),
 }
 
 impl Display for Object {
@@ -28,6 +29,7 @@ impl Display for Object {
             Object::Function(func) => write!(f, "{func}"),
             Object::String(string) => write!(f, "{string}"),
             Object::Builtin(builtin) => write!(f, "{builtin}"),
+            Object::Array(array) => write!(f, "{array}"),
         }
     }
 }
@@ -112,5 +114,24 @@ pub struct BuiltinFunction(pub fn(args: Vec<Object>) -> InterpreterResult<Object
 impl Display for BuiltinFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "builtin function")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Array {
+    pub elements: Vec<Object>,
+}
+
+impl Display for Array {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let elements = self
+            .elements
+            .iter()
+            .map(|p| p.to_string())
+            .reduce(|acc, cur| format!("{acc}, {cur}"))
+            .unwrap_or(String::new());
+
+        // rip indentation
+        write!(f, "[{elements}]")
     }
 }

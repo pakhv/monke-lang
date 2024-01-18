@@ -9,6 +9,7 @@ pub enum ExpressionType {
     Product,     // *
     Prefix,      // -X or !X
     Call,        // myFunction(X)
+    Index,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +31,8 @@ pub enum Expression {
     If(IfExpression),
     FunctionLiteral(FunctionLiteral),
     Call(CallExpression),
+    ArrayLiteral(ArrayLiteral),
+    IndexExpression(IndexExpression),
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +86,8 @@ impl Display for Expression {
             Expression::FunctionLiteral(func) => write!(f, "{func}"),
             Expression::Call(call) => write!(f, "{call}"),
             Expression::StringLiteral(string) => write!(f, "{string}"),
+            Expression::ArrayLiteral(array) => write!(f, "{array}"),
+            Expression::IndexExpression(index_expr) => write!(f, "{index_expr}"),
         }
     }
 }
@@ -254,6 +259,38 @@ impl Display for CallExpression {
             .unwrap_or(String::new());
 
         write!(f, "{}({})", self.function, arguments)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayLiteral {
+    pub token: Token,
+    pub elements: Vec<Expression>,
+}
+
+impl Display for ArrayLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let elements = self
+            .elements
+            .iter()
+            .map(|b| b.to_string())
+            .reduce(|acc, cur| format!("{acc}, {cur}"))
+            .unwrap_or(String::new());
+
+        write!(f, "[{elements}]")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexExpression {
+    pub token: Token,
+    pub left: Box<Expression>,
+    pub index: Box<Expression>,
+}
+
+impl Display for IndexExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}[{}])", self.left, self.index)
     }
 }
 

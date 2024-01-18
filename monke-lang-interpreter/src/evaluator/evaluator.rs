@@ -8,7 +8,7 @@ use crate::{
 
 use super::{
     environment::Environment,
-    types::{Boolean, BuiltinFunction, Function, Integer, Null, Object, Return, Str},
+    types::{Array, Boolean, BuiltinFunction, Function, Integer, Null, Object, Return, Str},
 };
 
 pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResult<Object> {
@@ -68,6 +68,10 @@ pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResul
             Expression::StringLiteral(string) => Ok(Object::String(Str {
                 value: string.token.to_string(),
             })),
+            Expression::ArrayLiteral(array) => Ok(Object::Array(Array {
+                elements: eval_expressions(array.elements, env)?,
+            })),
+            _ => todo!(),
         },
         Program::Expressions(_) => todo!(),
     }
@@ -560,6 +564,35 @@ addTwo(2);"#;
                 Object::Integer(int) => assert_eq!(int.value, expected_result),
                 actual => panic!("integer expected, but got {actual}"),
             }
+        }
+    }
+
+    #[test]
+    fn array_evaluation_test() {
+        let input = "[1, 2 * 2, 3 + 3]";
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::Array(array) => {
+                assert_eq!(array.elements.len(), 3);
+
+                match (
+                    array.elements.get(0).unwrap(),
+                    array.elements.get(1).unwrap(),
+                    array.elements.get(2).unwrap(),
+                ) {
+                    (Object::Integer(int1), Object::Integer(int2), Object::Integer(int3)) => {
+                        assert_eq!(int1.value, 1);
+                        assert_eq!(int2.value, 4);
+                        assert_eq!(int3.value, 6);
+                    }
+                    (actual1, actual2, actual3) => {
+                        panic!("integers expected, but got {actual1}, {actual2}, {actual3}")
+                    }
+                }
+            }
+            actual => panic!("array expected, but got {actual}"),
         }
     }
 }
