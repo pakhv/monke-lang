@@ -1,6 +1,6 @@
 use std::{fmt::Display, str::FromStr};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Token {
     Illegal,
     // Identifiers + literals
@@ -20,6 +20,7 @@ pub enum Token {
     Ne,
     // Delimiters
     Comma,
+    Colon,
     Semicolon,
     Lparen,
     Rparen,
@@ -86,6 +87,7 @@ impl Display for Token {
             Token::String(string) => write!(f, "{string}"),
             Token::Lbracket => write!(f, "["),
             Token::Rbracket => write!(f, "]"),
+            Token::Colon => write!(f, ":"),
         }
     }
 }

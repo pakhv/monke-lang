@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
 use super::super::result::InterpreterResult;
 use super::ast::{
-    ArrayLiteral, BlockStatement, Boolean, CallExpression, Expression, FunctionLiteral, Identifier,
-    IfExpression, IndexExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression,
-    Program, ReturnStatement, Statement, StringLiteral,
+    ArrayLiteral, BlockStatement, Boolean, CallExpression, Expression, FunctionLiteral,
+    HashLiteral, Identifier, IfExpression, IndexExpression, InfixExpression, IntegerLiteral,
+    LetStatement, PrefixExpression, Program, ReturnStatement, Statement, StringLiteral,
 };
 use crate::lexer::{lexer::Lexer, token::Token};
 use crate::parser::ast::{ExpressionStatement, ExpressionType};
@@ -198,6 +200,7 @@ impl Parser {
                 Token::Function => Ok(Self::parse_function_literal),
                 Token::String(_) => Ok(Self::parse_string),
                 Token::Lbracket => Ok(Self::parse_array_literal),
+                Token::Lbrace => Ok(Self::parse_hash_literal),
                 _ => todo!(),
             },
             None => Err(String::from(
@@ -500,6 +503,53 @@ impl Parser {
             left: Box::new(left),
             index: Box::new(index),
         }))
+    }
+
+    fn parse_hash_literal(parser: &mut Parser) -> InterpreterResult<Expression> {
+        let token = parser.cur_token.clone().unwrap();
+        let mut pairs = HashMap::new();
+
+        println!("here");
+
+        while parser
+            .peek_token
+            .as_ref()
+            .is_some_and(|t| t != &Token::Rbrace)
+        {
+            parser.next_token();
+            let key = parser.parse_expression(ExpressionType::Lowest as usize)?;
+
+            if !parser.expect_peek(Token::Colon) {
+                return Err(String::from(
+                    "unable to parse hash literal, couldn't find colon",
+                ));
+            }
+
+            parser.next_token();
+            let value = parser.parse_expression(ExpressionType::Lowest as usize)?;
+
+            pairs.insert(key, value);
+
+            if (parser.peek_token.is_none()
+                || parser
+                    .peek_token
+                    .as_ref()
+                    .is_some_and(|t| t != &Token::Rbrace))
+                && !parser.expect_peek(Token::Comma)
+            {
+                return Err(String::from(
+                    "unable to parse hash literal, couldn't find closing brace or comma",
+                ));
+            }
+        }
+
+        if !parser.expect_peek(Token::Rbrace) {
+            return Err(String::from(
+                "unable to parse hash literal, couldn't find closing brace",
+            ));
+        }
+
+        Ok(Expression::HashLiteral(HashLiteral { token, pairs }))
     }
 }
 
@@ -1419,6 +1469,118 @@ mod tests {
                 actual => panic!("index expression expected, got {actual}"),
             },
             actual => panic!("expression statement expected, got {actual}"),
+        }
+    }
+
+    #[test]
+    fn hash_literal_test() {
+        let input = r#"{"one": 1, "two": 2, "three": 3}"#;
+        let expected = vec![("one", 1), ("three", 3), ("two", 2)];
+
+        let program = parse_input(input);
+        let statements = match program {
+            Program::Statements(statements) => statements,
+            actual => panic!("statements expected, but got {actual}"),
+        };
+        assert_eq!(statements.len(), 1);
+
+        match statements.first().unwrap() {
+            Statement::Expression(expr) => match &expr.expression {
+                Expression::HashLiteral(hash_literal) => {
+                    assert_eq!(hash_literal.pairs.len(), 3);
+
+                    let mut actual_result = hash_literal.pairs.iter().map(|(key, value)| {
+                        match (key, value) {
+                            (
+                                Expression::StringLiteral(string),
+                                Expression::IntegerLiteral(int),
+                            ) => {
+                                (string.to_string(), int.value)
+                            }
+                            (actual_key, actaul_value) => panic!("string and integer expected, but got {actual_key} and {actaul_value}"),
+                        }
+                    }).collect::<Vec<_>>();
+
+                    actual_result.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+                    for (&(exp_key, exp_value), (key, value)) in expected.iter().zip(actual_result)
+                    {
+                        assert_eq!(key.as_str(), exp_key);
+                        assert_eq!(value, exp_value);
+                    }
+                }
+                actual => panic!("hash literal expected, but got {actual}"),
+            },
+            actual => panic!("expression statement expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn empty_hash_literal_test() {
+        let input = "{}";
+
+        let program = parse_input(input);
+        let statements = match program {
+            Program::Statements(statements) => statements,
+            actual => panic!("statements expected, but got {actual}"),
+        };
+        assert_eq!(statements.len(), 1);
+
+        match statements.first().unwrap() {
+            Statement::Expression(expr) => match &expr.expression {
+                Expression::HashLiteral(hash_literal) => {
+                    assert_eq!(hash_literal.pairs.len(), 0);
+                }
+                actual => panic!("hash literal expected, but got {actual}"),
+            },
+            actual => panic!("expression statement expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn complex_hash_literal_test() {
+        let input = r#"{"one": 0 + 1, "two": 10 - 8, "three": 15 / 5}"#;
+        let expected = vec![
+            ("one", "(0 + 1)"),
+            ("three", "(15 / 5)"),
+            ("two", "(10 - 8)"),
+        ];
+
+        let program = parse_input(input);
+        let statements = match program {
+            Program::Statements(statements) => statements,
+            actual => panic!("statements expected, but got {actual}"),
+        };
+        assert_eq!(statements.len(), 1);
+
+        match statements.first().unwrap() {
+            Statement::Expression(expr) => match &expr.expression {
+                Expression::HashLiteral(hash_literal) => {
+                    assert_eq!(hash_literal.pairs.len(), 3);
+
+                    let mut actual_result = hash_literal.pairs.iter().map(|(key, value)| {
+                        match (key, value) {
+                            (
+                                Expression::StringLiteral(string1),
+                                Expression::Infix(infix),
+                            ) => {
+                                (string1.to_string(), infix.to_string())
+                            }
+                            (actual_key, actaul_value) => panic!("string and integer expected, but got {actual_key} and {actaul_value}"),
+                        }
+                    }).collect::<Vec<_>>();
+
+                    actual_result.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+                    for (&(exp_key, exp_value), (key, value)) in expected.iter().zip(actual_result)
+                    {
+                        assert_eq!(key.as_str(), exp_key);
+                        assert_eq!(value, exp_value);
+                    }
+                }
+                actual => panic!("hash literal expected, but got {actual}"),
+            },
+            actual => panic!("expression statement expected, but got {actual}"),
         }
     }
 }

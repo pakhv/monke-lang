@@ -42,6 +42,7 @@ impl Lexer {
                 '!' => self.peek_conditional('=', Token::Ne, Token::Bang),
                 '[' => self.advance_and_return(Token::Lbracket),
                 ']' => self.advance_and_return(Token::Rbracket),
+                ':' => self.advance_and_return(Token::Colon),
                 '"' => {
                     self.advance();
                     let string = self.read_while(|c| c != '"');
@@ -173,6 +174,7 @@ if (5 < 10) {
 "foobar"
 "foo bar"
 [1, 2];
+{"foo": "bar"}
 "#;
 
         let mut lexer = Lexer::new(String::from(input));
@@ -259,6 +261,11 @@ if (5 < 10) {
             Token::Int(String::from("2")),
             Token::Rbracket,
             Token::Semicolon,
+            Token::Lbrace,
+            Token::String(String::from("foo")),
+            Token::Colon,
+            Token::String(String::from("bar")),
+            Token::Rbrace,
         ];
 
         for expected_token in expected_tokens {
