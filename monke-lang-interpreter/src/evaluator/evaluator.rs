@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     lexer::token::Token,
@@ -7,8 +7,10 @@ use crate::{
 };
 
 use super::{
-    environment::Environment,
-    types::{Array, Boolean, BuiltinFunction, Function, Integer, Null, Object, Return, Str},
+    environment::{Environment, OuterEnvWrapper},
+    types::{
+        Array, Boolean, BuiltinFunction, Function, HashTable, Integer, Null, Object, Return, Str,
+    },
 };
 
 pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResult<Object> {
@@ -57,7 +59,7 @@ pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResul
             Expression::FunctionLiteral(func) => Ok(Object::Function(Function {
                 parameters: func.parameters,
                 body: func.body,
-                env,
+                env: OuterEnvWrapper(env),
             })),
             Expression::Call(call) => {
                 let function = eval((*call.function).into(), Rc::clone(&env))?;
@@ -85,13 +87,42 @@ pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResul
 
                         Ok(array.elements.get(idx.value as usize).cloned().unwrap())
                     }
+                    (Object::HashTable(hash_table), idx) => {
+                        match idx {
+                            Object::String(_) | Object::Integer(_) | Object::Boolean(_) => (),
+                            actual => return Err(format!("unable to index hash table; only Integer, String or Boolean could be used as key, but got \"{actual}\"")),
+                        };
+
+                        Ok(hash_table
+                            .pairs
+                            .get(&idx)
+                            .unwrap_or(&Object::Null(Null {}))
+                            .clone())
+                    }
                     (actual_left, actual_index) => Err(format!(
                         "index operator not supported for \"{actual_left}\" and \"{actual_index}\""
                     )),
                 }
             }
+            Expression::HashLiteral(hash_literal) => {
+                let mut pairs: HashMap<Object, Object> = HashMap::new();
+
+                for (key_node, value_node) in hash_literal.pairs {
+                    let key = eval(key_node.into(), Rc::clone(&env))?;
+
+                    match key {
+                        Object::String(_) | Object::Integer(_) | Object::Boolean(_) => (),
+                        actual => return Err(format!("unable to evaluate hash literal; only Integer, String or Boolean could be used as key, but got \"{actual}\"")),
+                    };
+
+                    let value = eval(value_node.into(), Rc::clone(&env))?;
+
+                    pairs.insert(key, value);
+                }
+
+                Ok(Object::HashTable(HashTable { pairs }))
+            }
         },
-        Program::Expressions(_) => todo!(),
     }
 }
 
@@ -117,7 +148,7 @@ fn apply_function(function: Object, args: Vec<Object>) -> InterpreterResult<Obje
 }
 
 fn extend_function_environment(func: Function, args: Vec<Object>) -> Rc<RefCell<Environment>> {
-    let mut env = Environment::new_outer(func.env);
+    let mut env = Environment::new_outer(func.env.0);
 
     for (idx, param) in func.parameters.iter().enumerate() {
         env.set(param.token.to_string(), args.get(idx).unwrap().clone());
@@ -385,7 +416,7 @@ mod test {
         evaluator::{
             environment::Environment,
             evaluator::eval,
-            types::{Integer, Null, Object},
+            types::{Boolean, Integer, Null, Object, Str},
         },
         lexer::lexer::Lexer,
         parser::parser::Parser,
@@ -785,6 +816,80 @@ sum([1, 2, 3, 4, 5]);
             let result = evaluate_input(input.to_string());
 
             assert_eq!(result.to_string(), expected_result);
+        }
+    }
+
+    #[test]
+    fn hash_literals_evaluation_test() {
+        let input = r#"let two = "two";
+{
+    "one": 10 - 9,
+    two: 1 + 1,
+    "thr" + "ee": 6 / 2,
+    4: 4,
+    true: 5,
+    false: 6
+}"#;
+
+        let expected = vec![
+            (
+                Object::String(Str {
+                    value: String::from("one"),
+                }),
+                1,
+            ),
+            (
+                Object::String(Str {
+                    value: String::from("two"),
+                }),
+                2,
+            ),
+            (
+                Object::String(Str {
+                    value: String::from("three"),
+                }),
+                3,
+            ),
+            (Object::Integer(Integer { value: 4 }), 4),
+            (Object::Boolean(Boolean { value: true }), 5),
+            (Object::Boolean(Boolean { value: false }), 6),
+        ];
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::HashTable(hash) => {
+                assert_eq!(hash.pairs.len(), 6);
+
+                for (key, expected_value) in expected {
+                    let result_value = hash.pairs.get(&key);
+                    assert!(result_value.is_some());
+
+                    match result_value.unwrap() {
+                        Object::Integer(int) => assert_eq!(int.value, expected_value),
+                        actual => panic!("integer expected, but got {actual}"),
+                    }
+                }
+            }
+            actual => panic!("hash map expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn hash_indexing_evaluation_test() {
+        let expected = vec![
+            (r#"{"foo": 5}["foo"]"#, "5"),
+            (r#"{"foo": 5}["bar"]"#, "null"),
+            (r#"let key = "foo"; {"foo": 5}[key]"#, "5"),
+            (r#"{}["foo"]"#, "null"),
+            (r#"{5: 5}[5]"#, "5"),
+            (r#"{true: 5}[true]"#, "5"),
+            (r#"{false: 5}[false]"#, "5"),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+            assert_eq!(result.to_string().as_str(), expected_result);
         }
     }
 }

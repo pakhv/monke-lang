@@ -1,13 +1,13 @@
-use std::{cell::RefCell, fmt::Display, rc::Rc};
+use std::{collections::HashMap, fmt::Display, hash::Hash};
 
 use crate::{
     parser::ast::{BlockStatement, Identifier},
     result::InterpreterResult,
 };
 
-use super::environment::Environment;
+use super::environment::OuterEnvWrapper;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Object {
     Integer(Integer),
     Boolean(Boolean),
@@ -17,6 +17,7 @@ pub enum Object {
     String(Str),
     Builtin(BuiltinFunction),
     Array(Array),
+    HashTable(HashTable),
 }
 
 impl Display for Object {
@@ -30,11 +31,12 @@ impl Display for Object {
             Object::String(string) => write!(f, "{string}"),
             Object::Builtin(builtin) => write!(f, "{builtin}"),
             Object::Array(array) => write!(f, "{array}"),
+            Object::HashTable(hash) => write!(f, "{hash}"),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Integer {
     pub value: i64,
 }
@@ -45,7 +47,7 @@ impl Display for Integer {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Boolean {
     pub value: bool,
 }
@@ -56,7 +58,7 @@ impl Display for Boolean {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Null {}
 
 impl Display for Null {
@@ -65,7 +67,7 @@ impl Display for Null {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Return {
     pub value: Box<Object>,
 }
@@ -76,11 +78,11 @@ impl Display for Return {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Function {
     pub parameters: Vec<Identifier>,
     pub body: BlockStatement,
-    pub env: Rc<RefCell<Environment>>,
+    pub env: OuterEnvWrapper,
 }
 
 impl Display for Function {
@@ -97,7 +99,7 @@ impl Display for Function {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Str {
     pub value: String,
 }
@@ -108,7 +110,7 @@ impl Display for Str {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct BuiltinFunction(pub fn(args: Vec<Object>) -> InterpreterResult<Object>);
 
 impl Display for BuiltinFunction {
@@ -117,7 +119,7 @@ impl Display for BuiltinFunction {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Array {
     pub elements: Vec<Object>,
 }
@@ -131,7 +133,36 @@ impl Display for Array {
             .reduce(|acc, cur| format!("{acc}, {cur}"))
             .unwrap_or(String::new());
 
-        // rip indentation
         write!(f, "[{elements}]")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HashTable {
+    pub pairs: HashMap<Object, Object>,
+}
+
+impl Display for HashTable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let pairs = self
+            .pairs
+            .iter()
+            .map(|(key, value)| format!("{key}: {value}"))
+            .reduce(|acc, cur| format!("{acc}, {cur}"))
+            .unwrap_or(String::new());
+
+        write!(f, "{{ {pairs} }}")
+    }
+}
+
+impl Hash for HashTable {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let pairs: Vec<_> = self
+            .pairs
+            .iter()
+            .map(|(key, value)| format!("{key} {value}"))
+            .collect();
+
+        pairs.hash(state);
     }
 }

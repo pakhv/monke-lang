@@ -39,6 +39,26 @@ pub enum Expression {
     HashLiteral(HashLiteral),
 }
 
+impl Expression {
+    fn same_type(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Expression::Identifier(_), Expression::Identifier(_)) => true,
+            (Expression::IntegerLiteral(_), Expression::IntegerLiteral(_)) => true,
+            (Expression::StringLiteral(_), Expression::StringLiteral(_)) => true,
+            (Expression::Prefix(_), Expression::Prefix(_)) => true,
+            (Expression::Infix(_), Expression::Infix(_)) => true,
+            (Expression::Boolean(_), Expression::Boolean(_)) => true,
+            (Expression::If(_), Expression::If(_)) => true,
+            (Expression::FunctionLiteral(_), Expression::FunctionLiteral(_)) => true,
+            (Expression::Call(_), Expression::Call(_)) => true,
+            (Expression::ArrayLiteral(_), Expression::ArrayLiteral(_)) => true,
+            (Expression::IndexExpression(_), Expression::IndexExpression(_)) => true,
+            (Expression::HashLiteral(_), Expression::HashLiteral(_)) => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Statement {
     Let(LetStatement),
@@ -100,12 +120,6 @@ impl Display for Statement {
 impl From<Expression> for Program {
     fn from(expression: Expression) -> Self {
         Program::Expression(expression)
-    }
-}
-
-impl From<Vec<Expression>> for Program {
-    fn from(expressions: Vec<Expression>) -> Self {
-        Program::Expressions(expressions)
     }
 }
 
@@ -317,19 +331,24 @@ impl PartialEq for HashLiteral {
         let mut pairs_a: Vec<_> = self
             .pairs
             .iter()
-            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .map(|(key, value)| (key.to_string(), key, value))
             .collect();
-        pairs_a.sort_by(|(a, _), (b, _)| a.cmp(b));
+        pairs_a.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
 
         let mut pairs_b: Vec<_> = self
             .pairs
             .iter()
-            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .map(|(key, value)| (key.to_string(), key, value))
             .collect();
-        pairs_b.sort_by(|(a, _), (b, _)| a.cmp(b));
+        pairs_b.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
 
-        for ((key_a, value_a), (key_b, value_b)) in pairs_a.iter().zip(pairs_b) {
-            if key_a != &key_b || value_a != &value_b {
+        for ((key_a, key_expr_a, value_expr_a), (key_b, key_expr_b, value_expr_b)) in
+            pairs_a.iter().zip(pairs_b)
+        {
+            if key_a != &key_b
+                || !key_expr_a.same_type(key_expr_b)
+                || !value_expr_a.same_type(value_expr_b)
+            {
                 return false;
             }
         }

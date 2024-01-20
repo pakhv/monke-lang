@@ -509,8 +509,6 @@ impl Parser {
         let token = parser.cur_token.clone().unwrap();
         let mut pairs = HashMap::new();
 
-        println!("here");
-
         while parser
             .peek_token
             .as_ref()
