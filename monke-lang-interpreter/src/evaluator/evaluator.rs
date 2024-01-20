@@ -297,6 +297,7 @@ fn get_builtin_function(fn_name: &str) -> Option<Object> {
         "last" => Some(Object::Builtin(BuiltinFunction(last_builtin))),
         "rest" => Some(Object::Builtin(BuiltinFunction(rest_builtin))),
         "push" => Some(Object::Builtin(BuiltinFunction(push_builtin))),
+        "puts" => Some(Object::Builtin(BuiltinFunction(puts_builtin))),
         _ => None,
     }
 }
@@ -406,6 +407,14 @@ fn push_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
             "argument to push function is not supported, Array expected, but got {actual}"
         )),
     }
+}
+
+fn puts_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+    for arg in args {
+        println!("{arg}");
+    }
+
+    Ok(Object::Null(Null {}))
 }
 
 #[cfg(test)]
