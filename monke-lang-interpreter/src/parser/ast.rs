@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     fmt::{Debug, Display},
     hash::Hash,
+    rc::Rc,
 };
 
 pub enum ExpressionType {
@@ -18,9 +19,9 @@ pub enum ExpressionType {
 
 #[derive(Debug, Clone)]
 pub enum Program {
-    Statement(Statement),
-    Statements(Vec<Statement>),
-    Expression(Expression),
+    Statement(Rc<Statement>),
+    Statements(Vec<Rc<Statement>>),
+    Expression(Rc<Expression>),
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -117,20 +118,20 @@ impl Display for Statement {
     }
 }
 
-impl From<Expression> for Program {
-    fn from(expression: Expression) -> Self {
-        Program::Expression(expression)
+impl From<Rc<Expression>> for Program {
+    fn from(expression: Rc<Expression>) -> Self {
+        Program::Expression(Rc::clone(&expression))
     }
 }
 
-impl From<Statement> for Program {
-    fn from(statement: Statement) -> Self {
-        Program::Statement(statement)
+impl From<Rc<Statement>> for Program {
+    fn from(statement: Rc<Statement>) -> Self {
+        Program::Statement(Rc::clone(&statement))
     }
 }
 
-impl From<Vec<Statement>> for Program {
-    fn from(statements: Vec<Statement>) -> Self {
+impl From<Vec<Rc<Statement>>> for Program {
+    fn from(statements: Vec<Rc<Statement>>) -> Self {
         Program::Statements(statements)
     }
 }
@@ -172,7 +173,7 @@ impl Display for StringLiteral {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PrefixExpression {
     pub token: Token,
-    pub right: Box<Expression>,
+    pub right: Rc<Expression>,
 }
 
 impl Display for PrefixExpression {
@@ -184,8 +185,8 @@ impl Display for PrefixExpression {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct InfixExpression {
     pub token: Token,
-    pub left: Box<Expression>,
-    pub right: Box<Expression>,
+    pub left: Rc<Expression>,
+    pub right: Rc<Expression>,
 }
 
 impl Display for InfixExpression {
@@ -209,9 +210,9 @@ impl Display for Boolean {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct IfExpression {
     pub token: Token,
-    pub condition: Box<Expression>,
-    pub consequence: BlockStatement,
-    pub alternative: Option<BlockStatement>,
+    pub condition: Rc<Expression>,
+    pub consequence: Rc<BlockStatement>,
+    pub alternative: Option<Rc<BlockStatement>>,
 }
 
 impl Display for IfExpression {
@@ -253,8 +254,8 @@ impl Display for FunctionLiteral {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct CallExpression {
     pub token: Token,
-    pub function: Box<Expression>,
-    pub arguments: Vec<Expression>,
+    pub function: Rc<Expression>,
+    pub arguments: Vec<Rc<Expression>>,
 }
 
 impl Display for CallExpression {
@@ -273,7 +274,7 @@ impl Display for CallExpression {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct ArrayLiteral {
     pub token: Token,
-    pub elements: Vec<Expression>,
+    pub elements: Vec<Rc<Expression>>,
 }
 
 impl Display for ArrayLiteral {
@@ -292,8 +293,8 @@ impl Display for ArrayLiteral {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct IndexExpression {
     pub token: Token,
-    pub left: Box<Expression>,
-    pub index: Box<Expression>,
+    pub left: Rc<Expression>,
+    pub index: Rc<Expression>,
 }
 
 impl Display for IndexExpression {
@@ -305,7 +306,7 @@ impl Display for IndexExpression {
 #[derive(Debug, Clone, Eq)]
 pub struct HashLiteral {
     pub token: Token,
-    pub pairs: HashMap<Expression, Expression>,
+    pub pairs: HashMap<Rc<Expression>, Rc<Expression>>,
 }
 
 impl Hash for HashLiteral {
@@ -374,7 +375,7 @@ impl Display for HashLiteral {
 pub struct LetStatement {
     pub token: Token,
     pub name: Identifier,
-    pub value: Expression,
+    pub value: Rc<Expression>,
 }
 
 impl Display for LetStatement {
@@ -386,7 +387,7 @@ impl Display for LetStatement {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct ReturnStatement {
     pub token: Token,
-    pub return_value: Expression,
+    pub return_value: Rc<Expression>,
 }
 
 impl Display for ReturnStatement {
@@ -398,7 +399,7 @@ impl Display for ReturnStatement {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct ExpressionStatement {
     pub token: Token,
-    pub expression: Expression,
+    pub expression: Rc<Expression>,
 }
 
 impl Display for ExpressionStatement {
@@ -410,7 +411,7 @@ impl Display for ExpressionStatement {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct BlockStatement {
     pub token: Token,
-    pub statements: Vec<Statement>,
+    pub statements: Vec<Rc<Statement>>,
 }
 
 impl Display for BlockStatement {

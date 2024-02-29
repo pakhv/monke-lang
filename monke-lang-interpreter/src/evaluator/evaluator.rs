@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     lexer::token::Token,
-    parser::ast::{Expression, Program, Statement},
+    parser::ast::{BlockStatement, Expression, IfExpression, Program, Statement},
     result::InterpreterResult,
 };
 
@@ -15,32 +15,32 @@ use super::{
 
 pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResult<Object> {
     match program {
-        Program::Statement(statement) => match statement {
-            Statement::Expression(expr) => eval(expr.expression.into(), env),
+        Program::Statement(statement) => match statement.as_ref() {
+            Statement::Expression(expr) => eval(Rc::clone(&expr.expression).into(), env),
             Statement::Block(block) => eval_block_statement(block, env),
             Statement::Return(return_statement) => Ok(Object::Return(Return {
-                value: Box::new(eval(return_statement.return_value.into(), env)?),
+                value: Box::new(eval(Rc::clone(&return_statement.return_value).into(), env)?),
             })),
             Statement::Let(let_statement) => {
-                let value = eval(let_statement.value.into(), Rc::clone(&env))?;
+                let value = eval(Rc::clone(&let_statement.value).into(), Rc::clone(&env))?;
 
                 let value_key = let_statement.name.token.to_string();
                 Ok(env.borrow_mut().set(value_key, value))
             }
         },
         Program::Statements(statements) => eval_program(statements, env),
-        Program::Expression(expr) => match expr {
+        Program::Expression(expr) => match expr.as_ref() {
             Expression::IntegerLiteral(int) => Ok(Object::Integer(Integer { value: int.value })),
             Expression::Boolean(bool) => Ok(Object::Boolean(Boolean { value: bool.value })),
             Expression::Prefix(prefix) => {
-                let right = eval((*prefix.right).into(), env)?;
-                eval_prefix_expression(prefix.token, right)
+                let right = eval(Rc::clone(&prefix.right).into(), env)?;
+                eval_prefix_expression(&prefix.token, right)
             }
             Expression::Infix(infix) => {
-                let left = eval((*infix.left).into(), Rc::clone(&env))?;
-                let right = eval((*infix.right).into(), env)?;
+                let left = eval(Rc::clone(&infix.left).into(), Rc::clone(&env))?;
+                let right = eval(Rc::clone(&infix.right).into(), env)?;
 
-                eval_infix_expression(infix.token, left, right)
+                eval_infix_expression(&infix.token, left, right)
             }
             Expression::If(if_expr) => eval_if_expression(if_expr, env),
             Expression::Identifier(ident) => {
@@ -57,13 +57,13 @@ pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResul
                 }
             }
             Expression::FunctionLiteral(func) => Ok(Object::Function(Function {
-                parameters: func.parameters,
-                body: func.body,
+                parameters: func.parameters.clone(),
+                body: func.body.clone(),
                 env: OuterEnvWrapper(env),
             })),
             Expression::Call(call) => {
-                let function = eval((*call.function).into(), Rc::clone(&env))?;
-                let args = eval_expressions(call.arguments, env)?;
+                let function = eval(Rc::clone(&call.function).into(), Rc::clone(&env))?;
+                let args = eval_expressions(&call.arguments, env)?;
 
                 apply_function(function, args)
             }
@@ -71,11 +71,11 @@ pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResul
                 value: string.token.to_string(),
             })),
             Expression::ArrayLiteral(array) => Ok(Object::Array(Array {
-                elements: eval_expressions(array.elements, env)?,
+                elements: eval_expressions(&array.elements, env)?,
             })),
             Expression::IndexExpression(index_expr) => {
-                let left = eval((*index_expr.left).into(), Rc::clone(&env))?;
-                let index = eval((*index_expr.index).into(), env)?;
+                let left = eval(Rc::clone(&index_expr.left).into(), Rc::clone(&env))?;
+                let index = eval(Rc::clone(&index_expr.index).into(), env)?;
 
                 match (left, index) {
                     (Object::Array(array), Object::Integer(idx)) => {
@@ -107,15 +107,15 @@ pub fn eval(program: Program, env: Rc<RefCell<Environment>>) -> InterpreterResul
             Expression::HashLiteral(hash_literal) => {
                 let mut pairs: HashMap<Object, Object> = HashMap::new();
 
-                for (key_node, value_node) in hash_literal.pairs {
-                    let key = eval(key_node.into(), Rc::clone(&env))?;
+                for (key_node, value_node) in &hash_literal.pairs {
+                    let key = eval(Rc::clone(key_node).into(), Rc::clone(&env))?;
 
                     match key {
                         Object::String(_) | Object::Integer(_) | Object::Boolean(_) => (),
                         actual => return Err(format!("unable to evaluate hash literal; only Integer, String or Boolean could be used as key, but got \"{actual}\"")),
                     };
 
-                    let value = eval(value_node.into(), Rc::clone(&env))?;
+                    let value = eval(Rc::clone(value_node).into(), Rc::clone(&env))?;
 
                     pairs.insert(key, value);
                 }
@@ -131,7 +131,7 @@ fn apply_function(function: Object, args: Vec<Object>) -> InterpreterResult<Obje
         Object::Function(func) => {
             let extended_env = extend_function_environment(func.clone(), args);
             let evaluated = eval(
-                Program::Statement(Statement::Block(func.body)),
+                Program::Statement(Rc::new(Statement::Block(func.body))),
                 extended_env,
             )?;
 
@@ -158,26 +158,26 @@ fn extend_function_environment(func: Function, args: Vec<Object>) -> Rc<RefCell<
 }
 
 fn eval_expressions(
-    arguments: Vec<Expression>,
+    arguments: &Vec<Rc<Expression>>,
     env: Rc<RefCell<Environment>>,
 ) -> InterpreterResult<Vec<Object>> {
     let mut result = vec![];
 
     for arg in arguments {
-        result.push(eval(arg.into(), Rc::clone(&env))?);
+        result.push(eval(Rc::clone(arg).into(), Rc::clone(&env))?);
     }
 
     Ok(result)
 }
 
 fn eval_block_statement(
-    block: crate::parser::ast::BlockStatement,
+    block: &BlockStatement,
     env: Rc<RefCell<Environment>>,
 ) -> InterpreterResult<Object> {
     let mut result = Object::Null(Null {});
 
-    for statement in block.statements {
-        result = eval(statement.into(), Rc::clone(&env))?;
+    for statement in &block.statements {
+        result = eval(Rc::clone(statement).into(), Rc::clone(&env))?;
 
         if let Object::Return(_) = result {
             return Ok(result);
@@ -187,7 +187,7 @@ fn eval_block_statement(
     Ok(result)
 }
 
-fn eval_prefix_expression(token: Token, right: Object) -> InterpreterResult<Object> {
+fn eval_prefix_expression(token: &Token, right: Object) -> InterpreterResult<Object> {
     match token {
         Token::Bang => match right {
             Object::Boolean(bool) => Ok(Object::Boolean(Boolean { value: !bool.value })),
@@ -206,7 +206,7 @@ fn eval_prefix_expression(token: Token, right: Object) -> InterpreterResult<Obje
     }
 }
 
-fn eval_infix_expression(token: Token, left: Object, right: Object) -> InterpreterResult<Object> {
+fn eval_infix_expression(token: &Token, left: Object, right: Object) -> InterpreterResult<Object> {
     match (left, right) {
         (Object::Integer(int_left), Object::Integer(int_right)) => match token {
             Token::Plus => Ok(Object::Integer(Integer {
@@ -255,26 +255,27 @@ fn eval_infix_expression(token: Token, left: Object, right: Object) -> Interpret
 }
 
 fn eval_if_expression(
-    if_expr: crate::parser::ast::IfExpression,
+    if_expr: &IfExpression,
     env: Rc<RefCell<Environment>>,
 ) -> InterpreterResult<Object> {
-    let is_truthy = match eval((*if_expr.condition).into(), Rc::clone(&env))? {
+    let is_truthy = match eval(Rc::clone(&if_expr.condition).into(), Rc::clone(&env))? {
         Object::Boolean(bool) => bool.value,
         Object::Null(_) => false,
         _ => true,
     };
 
-    match is_truthy {
-        true => Ok(eval(Statement::Block(if_expr.consequence).into(), env)?),
-        false => match if_expr.alternative {
-            Some(alt) => Ok(eval(Statement::Block(alt).into(), env)?),
-            None => Ok(Object::Null(Null {})),
-        },
-    }
+    todo!()
+    // match is_truthy {
+    //     true => Ok(eval(Statement::Block(if_expr.consequence).into(), env)?),
+    //     false => match if_expr.alternative {
+    //         Some(alt) => Ok(eval(Statement::Block(alt).into(), env)?),
+    //         None => Ok(Object::Null(Null {})),
+    //     },
+    // }
 }
 
 fn eval_program(
-    statements: Vec<Statement>,
+    statements: Vec<Rc<Statement>>,
     env: Rc<RefCell<Environment>>,
 ) -> InterpreterResult<Object> {
     let mut result = Object::Null(Null {});
