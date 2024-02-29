@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn make_test() {
-        let expected_result: Vec<(OpCodeType, Vec<i32>, Vec<u8>)> = vec![(
+        let expected_result: Vec<(_, Vec<i32>, _)> = vec![(
             OpCodeType::Constant,
             vec![65534],
             vec![OpCodeType::Constant.into(), 255, 254],
