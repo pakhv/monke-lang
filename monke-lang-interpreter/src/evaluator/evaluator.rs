@@ -83,14 +83,24 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                                 }
                             }
                         }
-                        // Statement::Let(let_statement) => {
-                        //     let value =
-                        //         eval(Rc::clone(&let_statement.value).into(), &Rc::clone(&env))?;
-                        //
-                        //     let value_key = let_statement.name.token.to_string();
-                        //     Ok(env.borrow_mut().set(value_key, value))
-                        // }
-                        _ => todo!(),
+                        Statement::Let(let_statement) => {
+                            match cur_node.borrow().evaluated_children.last() {
+                                Some(let_value) => {
+                                    let value_key = let_statement.name.token.to_string();
+                                    let value = env.borrow_mut().set(value_key, let_value.clone());
+                                    Some(value)
+                                }
+                                None => {
+                                    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+                                    nodes_stack.push(AstTraverse::new(
+                                        Rc::clone(&let_statement.value).into(),
+                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
+                                    ));
+
+                                    None
+                                }
+                            }
+                        }
                     },
                     Program::Statements(statements) => {
                         eval_program(statements, &cur_node, &mut nodes_stack, true)
@@ -154,20 +164,19 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                         Expression::If(if_expr) => {
                             eval_if_expression(if_expr, &cur_node, &mut nodes_stack)
                         }
-                        //eval_if_expression(if_expr, env.clone()) },
-                        //     Expression::Identifier(ident) => {
-                        //         let value_key = ident.token.to_string();
-                        //
-                        //         match env.borrow().get(&value_key) {
-                        //             Some(obj) => Ok(obj),
-                        //             None => match get_builtin_function(&value_key) {
-                        //                 Some(builtin) => Ok(builtin),
-                        //                 None => Err(format!(
-                        //         "unable to evaluate identifier, identifier \"{value_key}\" not found"
-                        //     )),
-                        //             },
-                        //         }
-                        //     }
+                        Expression::Identifier(ident) => {
+                            let value_key = ident.token.to_string();
+
+                            match env.borrow().get(&value_key) {
+                                    Some(obj) => Some(obj),
+                                    None => match get_builtin_function(&value_key) {
+                                        Some(builtin) => Some(builtin),
+                                        None => Err(format!(
+                                "unable to evaluate identifier, identifier \"{value_key}\" not found"
+                            ))?,
+                                    },
+                                }
+                        }
                         //     Expression::FunctionLiteral(func) => Ok(Object::Function(Function {
                         //         parameters: func.parameters.clone(),
                         //         body: func.body.clone(),
@@ -806,26 +815,26 @@ if (10 > 1) {
             }
         }
     }
-    //
-    //     #[test]
-    //     fn let_statement_evaluation_test() {
-    //         let expected = vec![
-    //             ("let a = 5; a;", 5),
-    //             ("let a = 5 * 5; a;", 25),
-    //             ("let a = 5; let b = a; b;", 5),
-    //             ("let a = 5; let b = a; let c = a + b + 5; c;", 15),
-    //         ];
-    //
-    //         for (input, expected_result) in expected {
-    //             let result = evaluate_input(input.to_string());
-    //
-    //             match result {
-    //                 Object::Integer(int) => assert_eq!(int.value, expected_result),
-    //                 actual => panic!("integer expected, but got {actual}"),
-    //             }
-    //         }
-    //     }
-    //
+
+    #[test]
+    fn let_statement_evaluation_test() {
+        let expected = vec![
+            ("let a = 5; a;", 5),
+            ("let a = 5 * 5; a;", 25),
+            ("let a = 5; let b = a; b;", 5),
+            ("let a = 5; let b = a; let c = a + b + 5; c;", 15),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => assert_eq!(int.value, expected_result),
+                actual => panic!("integer expected, but got {actual}"),
+            }
+        }
+    }
+
     //     #[test]
     //     fn function_evaluation_test() {
     //         let input = "fn(x) { x + 2; };";
