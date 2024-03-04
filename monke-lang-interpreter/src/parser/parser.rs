@@ -138,7 +138,7 @@ impl Parser {
         }))
     }
 
-    fn parse_block_statement(&mut self) -> InterpreterResult<BlockStatement> {
+    fn parse_block_statement(&mut self) -> InterpreterResult<Statement> {
         let token = self.cur_token.clone().unwrap();
         let mut statements = vec![];
 
@@ -149,7 +149,7 @@ impl Parser {
             self.next_token();
         }
 
-        Ok(BlockStatement { token, statements })
+        Ok(Statement::Block(BlockStatement { token, statements }))
     }
 
     fn parse_expression(&mut self, precedence: usize) -> InterpreterResult<Expression> {
@@ -370,7 +370,7 @@ impl Parser {
             ));
         }
 
-        let body = parser.parse_block_statement()?;
+        let body = Rc::new(parser.parse_block_statement()?);
 
         Ok(Expression::FunctionLiteral(FunctionLiteral {
             token,
@@ -582,8 +582,8 @@ mod tests {
     use crate::{
         lexer::{lexer::Lexer, token::Token},
         parser::ast::{
-            Boolean, Expression, Identifier, InfixExpression, IntegerLiteral, LetStatement,
-            Program, Statement,
+            BlockStatement, Boolean, Expression, Identifier, InfixExpression, IntegerLiteral,
+            LetStatement, Program, Statement,
         },
     };
 
@@ -1165,15 +1165,14 @@ mod tests {
                 }
             }
 
-            assert_eq!(if_expression.consequence.statements.len(), 1);
+            let block_statement = match if_expression.consequence.as_ref() {
+                Statement::Block(block) => block,
+                actual => panic!("block statement expected, bug got {actual}"),
+            };
 
-            match if_expression
-                .consequence
-                .statements
-                .first()
-                .unwrap()
-                .as_ref()
-            {
+            assert_eq!(block_statement.statements.len(), 1);
+
+            match block_statement.statements.first().unwrap().as_ref() {
                 Statement::Expression(statement) => match &statement.expression.as_ref() {
                     Expression::Identifier(ident) => {
                         assert_eq!(ident.token, Token::Ident(String::from("x")))
@@ -1184,15 +1183,12 @@ mod tests {
             };
 
             if has_alternative_statement {
-                match if_expression
-                    .alternative
-                    .as_ref()
-                    .unwrap()
-                    .statements
-                    .first()
-                    .unwrap()
-                    .as_ref()
-                {
+                let block_statement = match if_expression.alternative.as_ref().unwrap().as_ref() {
+                    Statement::Block(block) => block,
+                    actual => panic!("block statement expected, bug got {actual}"),
+                };
+
+                match block_statement.statements.first().unwrap().as_ref() {
                     Statement::Expression(statement) => match &statement.expression.as_ref() {
                         Expression::Identifier(ident) => {
                             assert_eq!(ident.token, Token::Ident(String::from("y")))
@@ -1237,9 +1233,14 @@ mod tests {
             Token::Ident(String::from("y"))
         );
 
-        assert_eq!(function_literal.body.statements.len(), 1);
+        let block_statement = match function_literal.body.as_ref() {
+            Statement::Block(block) => block,
+            actual => panic!("block statement expected, but got {actual}"),
+        };
 
-        let infix_expression = match function_literal.body.statements.first().unwrap().as_ref() {
+        assert_eq!(block_statement.statements.len(), 1);
+
+        let infix_expression = match block_statement.statements.first().unwrap().as_ref() {
             Statement::Expression(statement) => match &statement.expression.as_ref() {
                 Expression::Infix(infix) => infix,
                 actual => panic!("infix expression expected, but got {actual}"),
