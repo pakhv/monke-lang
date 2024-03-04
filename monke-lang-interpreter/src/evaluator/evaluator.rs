@@ -53,7 +53,7 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                     Program::Statement(statement) => match statement.as_ref() {
                         Statement::Expression(expr) => {
                             match cur_node.borrow().evaluated_children.last() {
-                                Some(right) => Some(right.clone()),
+                                Some(expr) => Some(expr.clone()),
                                 None => {
                                     nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
                                     nodes_stack.push(AstTraverse::new(
@@ -67,12 +67,22 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                         Statement::Block(block) => {
                             eval_program(&block.statements, &cur_node, &mut nodes_stack, false)
                         }
-                        // Statement::Return(return_statement) => Ok(Object::Return(Return {
-                        //     value: Box::new(eval(
-                        //         Rc::clone(&return_statement.return_value).into(),
-                        //         env,
-                        //     )?),
-                        // })),
+                        Statement::Return(return_statement) => {
+                            match cur_node.borrow().evaluated_children.last() {
+                                Some(return_value) => Some(Object::Return(Return {
+                                    value: Box::new(return_value.clone()),
+                                })),
+                                None => {
+                                    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+                                    nodes_stack.push(AstTraverse::new(
+                                        Rc::clone(&return_statement.return_value).into(),
+                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
+                                    ));
+
+                                    None
+                                }
+                            }
+                        }
                         // Statement::Let(let_statement) => {
                         //     let value =
                         //         eval(Rc::clone(&let_statement.value).into(), &Rc::clone(&env))?;
@@ -235,11 +245,14 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                             return Ok(obj);
                         }
 
-                        match cur_node.borrow_mut().parent_node.as_ref().unwrap() {
-                            AstTraverse::Node(node) => {
-                                node.borrow_mut().evaluated_children.push(obj);
-                            }
-                            AstTraverse::None => return Ok(obj),
+                        match cur_node.borrow_mut().parent_node.as_ref() {
+                            Some(parent_node) => match parent_node {
+                                AstTraverse::Node(node) => {
+                                    node.borrow_mut().evaluated_children.push(obj);
+                                }
+                                AstTraverse::None => return Ok(obj),
+                            },
+                            None => (),
                         }
                     }
                     None => (),
@@ -761,38 +774,38 @@ mod test {
         }
     }
 
-    //     #[test]
-    //     fn return_evaluation_test() {
-    //         let expected = vec![
-    //             ("return 10;", 10),
-    //             ("return 10; 9;", 10),
-    //             ("return 2 * 5; 9;", 10),
-    //             ("9; return 2 * 5; 9;", 10),
-    //             (
-    //                 r#"
-    // if (10 > 1) {
-    //     if (10 > 1) {
-    //         return 10;
-    //     }
-    //
-    //     return 1;
-    // }
-    // "#,
-    //                 10,
-    //             ),
-    //         ];
-    //
-    //         for (input, expected_result) in expected {
-    //             let result = evaluate_input(input.to_string());
-    //
-    //             match result {
-    //                 Object::Integer(int) => {
-    //                     assert_eq!(int.value, expected_result)
-    //                 }
-    //                 actual => panic!("integer expected, but got {actual}"),
-    //             }
-    //         }
-    //     }
+    #[test]
+    fn return_evaluation_test() {
+        let expected = vec![
+            ("return 10;", 10),
+            ("return 10; 9;", 10),
+            ("return 2 * 5; 9;", 10),
+            ("9; return 2 * 5; 9;", 10),
+            (
+                r#"
+if (10 > 1) {
+    if (10 > 1) {
+        return 10;
+    }
+
+    return 1;
+}
+                "#,
+                10,
+            ),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => {
+                    assert_eq!(int.value, expected_result)
+                }
+                actual => panic!("integer expected, but got {actual}"),
+            }
+        }
+    }
     //
     //     #[test]
     //     fn let_statement_evaluation_test() {
