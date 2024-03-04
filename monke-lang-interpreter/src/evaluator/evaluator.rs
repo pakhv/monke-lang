@@ -55,7 +55,7 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                             match cur_node.borrow().evaluated_children.last() {
                                 Some(expr) => Some(expr.clone()),
                                 None => {
-                                    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
                                     nodes_stack.push(AstTraverse::new(
                                         Rc::clone(&expr.expression).into(),
                                         Some(AstTraverse::Node(Rc::clone(&cur_node))),
@@ -73,7 +73,7 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                                     value: Box::new(return_value.clone()),
                                 })),
                                 None => {
-                                    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
                                     nodes_stack.push(AstTraverse::new(
                                         Rc::clone(&return_statement.return_value).into(),
                                         Some(AstTraverse::Node(Rc::clone(&cur_node))),
@@ -91,7 +91,7 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                                     Some(value)
                                 }
                                 None => {
-                                    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
                                     nodes_stack.push(AstTraverse::new(
                                         Rc::clone(&let_statement.value).into(),
                                         Some(AstTraverse::Node(Rc::clone(&cur_node))),
@@ -116,7 +116,7 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                             match cur_node.borrow().evaluated_children.last() {
                                 Some(right) => Some(eval_prefix_expression(&prefix.token, right)?),
                                 None => {
-                                    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
                                     nodes_stack.push(AstTraverse::new(
                                         Rc::clone(&prefix.right).into(),
                                         Some(AstTraverse::Node(Rc::clone(&cur_node))),
@@ -129,7 +129,7 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                         Expression::Infix(infix) => {
                             match cur_node.borrow().evaluated_children.len() {
                                 0 => {
-                                    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
                                     nodes_stack.push(AstTraverse::new(
                                         Rc::clone(&infix.left).into(),
                                         Some(AstTraverse::Node(Rc::clone(&cur_node))),
@@ -272,6 +272,13 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
     }
 }
 
+fn add_current_node_to_stack(
+    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    nodes_stack: &mut Vec<AstTraverse>,
+) {
+    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+}
+
 fn apply_function(function: Object, args: Vec<Object>) -> InterpreterResult<Object> {
     match function {
         Object::Function(func) => {
@@ -407,7 +414,7 @@ fn eval_if_expression(
 ) -> Option<Object> {
     match cur_node.borrow().evaluated_children.len() {
         0 => {
-            nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+            add_current_node_to_stack(cur_node, nodes_stack);
             nodes_stack.push(AstTraverse::new(
                 Rc::clone(&if_expr.condition).into(),
                 Some(AstTraverse::Node(Rc::clone(&cur_node))),
@@ -428,7 +435,7 @@ fn eval_if_expression(
                 return None;
             }
 
-            nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+            add_current_node_to_stack(cur_node, nodes_stack);
 
             let is_truthy = match cur_node.borrow().evaluated_children.last().unwrap() {
                 Object::Boolean(bool) => bool.value,
@@ -472,7 +479,7 @@ fn eval_program(
 
     match cur_node.borrow().evaluated_children.len() {
         l if l == 0 => {
-            nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+            add_current_node_to_stack(cur_node, nodes_stack);
             nodes_stack.push(AstTraverse::new(
                 Rc::clone(statements.first().unwrap()).into(),
                 Some(AstTraverse::Node(Rc::clone(&cur_node))),
@@ -491,7 +498,7 @@ fn eval_program(
             }
 
             if l != statements.len() {
-                nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+                add_current_node_to_stack(cur_node, nodes_stack);
                 nodes_stack.push(AstTraverse::new(
                     Rc::clone(statements.get(l).unwrap()).into(),
                     Some(AstTraverse::Node(Rc::clone(&cur_node))),
