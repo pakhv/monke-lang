@@ -177,11 +177,11 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                                     },
                                 }
                         }
-                        //     Expression::FunctionLiteral(func) => Ok(Object::Function(Function {
-                        //         parameters: func.parameters.clone(),
-                        //         body: func.body.clone(),
-                        //         env: OuterEnvWrapper(env.clone()),
-                        //     })),
+                        Expression::FunctionLiteral(func) => Some(Object::Function(Function {
+                            parameters: func.parameters.clone(),
+                            body: func.body.clone(),
+                            env: OuterEnvWrapper(env.clone()),
+                        })),
                         //     Expression::Call(call) => {
                         //         let function =
                         //             eval(Rc::clone(&call.function).into(), &Rc::clone(&env))?;
@@ -283,10 +283,7 @@ fn apply_function(function: Object, args: Vec<Object>) -> InterpreterResult<Obje
     match function {
         Object::Function(func) => {
             let extended_env = extend_function_environment(func.clone(), args);
-            let evaluated = eval(
-                Program::Statement(Rc::new(Statement::Block(func.body))),
-                &extended_env,
-            )?;
+            let evaluated = eval(Program::Statement(func.body), &extended_env)?;
 
             match evaluated {
                 Object::Return(return_obj) => Ok(*return_obj.value),
@@ -842,42 +839,42 @@ if (10 > 1) {
         }
     }
 
-    //     #[test]
-    //     fn function_evaluation_test() {
-    //         let input = "fn(x) { x + 2; };";
+    #[test]
+    fn function_evaluation_test() {
+        let input = "fn(x) { x + 2; };";
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::Function(func) => {
+                assert_eq!(func.parameters.len(), 1);
+                assert_eq!(func.parameters.first().unwrap().to_string(), "x");
+                assert_eq!(func.body.to_string(), "(x + 2)");
+            }
+            actual => panic!("function expected, but got {actual}"),
+        }
+    }
+
+    // #[test]
+    // fn function_application_evaluation_test() {
+    //     let expected = vec![
+    //         ("let identity = fn(x) { x; }; identity(5);", 5),
+    //         ("let identity = fn(x) { return x; }; identity(5);", 5),
+    //         ("let double = fn(x) { x * 2; }; double(5);", 10),
+    //         ("let add = fn(x, y) { x + y; }; add(5, 5);", 10),
+    //         ("let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20),
+    //         ("fn(x) { x; }(5)", 5),
+    //     ];
     //
+    //     for (input, expected_result) in expected {
     //         let result = evaluate_input(input.to_string());
     //
     //         match result {
-    //             Object::Function(func) => {
-    //                 assert_eq!(func.parameters.len(), 1);
-    //                 assert_eq!(func.parameters.first().unwrap().to_string(), "x");
-    //                 assert_eq!(func.body.to_string(), "(x + 2)");
-    //             }
-    //             actual => panic!("function expected, but got {actual}"),
+    //             Object::Integer(int) => assert_eq!(int.value, expected_result),
+    //             actual => panic!("integer expected, but got {actual}"),
     //         }
     //     }
-    //
-    //     #[test]
-    //     fn function_application_evaluation_test() {
-    //         let expected = vec![
-    //             ("let identity = fn(x) { x; }; identity(5);", 5),
-    //             ("let identity = fn(x) { return x; }; identity(5);", 5),
-    //             ("let double = fn(x) { x * 2; }; double(5);", 10),
-    //             ("let add = fn(x, y) { x + y; }; add(5, 5);", 10),
-    //             ("let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20),
-    //             ("fn(x) { x; }(5)", 5),
-    //         ];
-    //
-    //         for (input, expected_result) in expected {
-    //             let result = evaluate_input(input.to_string());
-    //
-    //             match result {
-    //                 Object::Integer(int) => assert_eq!(int.value, expected_result),
-    //                 actual => panic!("integer expected, but got {actual}"),
-    //             }
-    //         }
-    //     }
+    // }
     //
     //     #[test]
     //     fn closure_test() {
