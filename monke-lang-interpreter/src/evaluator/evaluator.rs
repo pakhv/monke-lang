@@ -925,23 +925,23 @@ if (10 > 1) {
         }
     }
 
-    //     #[test]
-    //     fn closure_test() {
-    //         let input = r#"
-    // let newAdder = fn(x) {
-    // fn(y) { x + y };
-    // };
-    // let addTwo = newAdder(2);
-    // addTwo(2);"#;
-    //
-    //         let result = evaluate_input(input.to_string());
-    //
-    //         match result {
-    //             Object::Integer(int) => assert_eq!(int.value, 4),
-    //             actual => panic!("integer expected, but got {actual}"),
-    //         }
-    //     }
-    //
+    #[test]
+    fn closure_test() {
+        let input = r#"
+let newAdder = fn(x) {
+    fn(y) { x + y };
+};
+let addTwo = newAdder(2);
+addTwo(2);"#;
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::Integer(int) => assert_eq!(int.value, 4),
+            actual => panic!("integer expected, but got {actual}"),
+        }
+    }
+
     //     #[test]
     //     fn string_literal_evaluation_test() {
     //         let input = r#""Hello World!""#;
