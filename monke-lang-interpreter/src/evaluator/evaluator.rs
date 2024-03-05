@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     lexer::token::Token,
-    parser::ast::{BlockStatement, Expression, IfExpression, Program, Statement},
+    parser::ast::{BlockStatement, CallExpression, Expression, IfExpression, Program, Statement},
     result::InterpreterResult,
 };
 
@@ -45,8 +45,11 @@ impl AstTraverse {
 
 pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResult<Object> {
     let mut nodes_stack = vec![AstTraverse::new(program, None)];
+    let mut env_stack = vec![Rc::clone(env)];
 
     loop {
+        let env = env_stack.last().unwrap();
+
         match nodes_stack.pop().unwrap() {
             AstTraverse::Node(cur_node) => {
                 let evaluated_node = match &cur_node.as_ref().borrow().node {
@@ -182,13 +185,9 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                             body: func.body.clone(),
                             env: OuterEnvWrapper(env.clone()),
                         })),
-                        //     Expression::Call(call) => {
-                        //         let function =
-                        //             eval(Rc::clone(&call.function).into(), &Rc::clone(&env))?;
-                        //         let args = eval_expressions(&call.arguments, env.clone())?;
-                        //
-                        //         apply_function(function, args)
-                        //     }
+                        Expression::Call(call) => {
+                            apply_function(call, &cur_node, &mut nodes_stack, &mut env_stack)?
+                        }
                         //     Expression::StringLiteral(string) => Ok(Object::String(Str {
                         //         value: string.token.to_string(),
                         //     })),
@@ -279,21 +278,71 @@ fn add_current_node_to_stack(
     nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
 }
 
-fn apply_function(function: Object, args: Vec<Object>) -> InterpreterResult<Object> {
-    match function {
-        Object::Function(func) => {
-            let extended_env = extend_function_environment(func.clone(), args);
-            let evaluated = eval(Program::Statement(func.body), &extended_env)?;
+fn apply_function(
+    call: &CallExpression,
+    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    nodes_stack: &mut Vec<AstTraverse>,
+    env_stack: &mut Vec<Rc<RefCell<Environment>>>,
+) -> InterpreterResult<Option<Object>> {
+    match cur_node.borrow().evaluated_children.len() {
+        0 => {
+            add_current_node_to_stack(cur_node, nodes_stack);
+            nodes_stack.push(AstTraverse::new(
+                Rc::clone(&call.function).into(),
+                Some(AstTraverse::Node(Rc::clone(cur_node))),
+            ));
 
-            match evaluated {
-                Object::Return(return_obj) => Ok(*return_obj.value),
-                _ => Ok(evaluated),
+            Ok(None)
+        }
+        l if l <= call.arguments.len() => {
+            add_current_node_to_stack(cur_node, nodes_stack);
+            nodes_stack.push(AstTraverse::new(
+                Rc::clone(&call.arguments.get(l - 1).unwrap()).into(),
+                Some(AstTraverse::Node(Rc::clone(cur_node))),
+            ));
+
+            Ok(None)
+        }
+        l if l == call.arguments.len() + 1 => {
+            let function = cur_node
+                .borrow()
+                .evaluated_children
+                .first()
+                .ok_or(String::from(""))?
+                .clone();
+            let args = cur_node
+                .borrow()
+                .evaluated_children
+                .get(1..)
+                .map_or(vec![], |args| args.iter().cloned().collect());
+
+            match function {
+                Object::Function(func) => {
+                    env_stack.push(extend_function_environment(func.clone(), args));
+
+                    add_current_node_to_stack(cur_node, nodes_stack);
+                    nodes_stack.push(AstTraverse::new(
+                        Rc::clone(&func.body).into(),
+                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
+                    ));
+
+                    Ok(None)
+                }
+                Object::Builtin(builtin) => Ok(Some(builtin.0(args)?)),
+                actual => Err(format!(
+                    "unable to evaluate function call, function excpected, but got \"{actual}\""
+                )),
             }
         }
-        Object::Builtin(builtin) => builtin.0(args),
-        actual => Err(format!(
-            "unable to evaluate function call, function excpected, but got \"{actual}\""
-        )),
+        _ => {
+            env_stack.pop();
+            let evaluated = cur_node.borrow().evaluated_children.last().unwrap().clone();
+
+            match evaluated {
+                Object::Return(return_obj) => Ok(Some(*return_obj.value)),
+                _ => Ok(Some(evaluated)),
+            }
+        }
     }
 }
 
@@ -855,27 +904,27 @@ if (10 > 1) {
         }
     }
 
-    // #[test]
-    // fn function_application_evaluation_test() {
-    //     let expected = vec![
-    //         ("let identity = fn(x) { x; }; identity(5);", 5),
-    //         ("let identity = fn(x) { return x; }; identity(5);", 5),
-    //         ("let double = fn(x) { x * 2; }; double(5);", 10),
-    //         ("let add = fn(x, y) { x + y; }; add(5, 5);", 10),
-    //         ("let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20),
-    //         ("fn(x) { x; }(5)", 5),
-    //     ];
-    //
-    //     for (input, expected_result) in expected {
-    //         let result = evaluate_input(input.to_string());
-    //
-    //         match result {
-    //             Object::Integer(int) => assert_eq!(int.value, expected_result),
-    //             actual => panic!("integer expected, but got {actual}"),
-    //         }
-    //     }
-    // }
-    //
+    #[test]
+    fn function_application_evaluation_test() {
+        let expected = vec![
+            ("let identity = fn(x) { x; }; identity(5);", 5),
+            ("let identity = fn(x) { return x; }; identity(5);", 5),
+            ("let double = fn(x) { x * 2; }; double(5);", 10),
+            ("let add = fn(x, y) { x + y; }; add(5, 5);", 10),
+            ("let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", 20),
+            ("fn(x) { x; }(5)", 5),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => assert_eq!(int.value, expected_result),
+                actual => panic!("integer expected, but got {actual}"),
+            }
+        }
+    }
+
     //     #[test]
     //     fn closure_test() {
     //         let input = r#"
