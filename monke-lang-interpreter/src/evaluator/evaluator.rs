@@ -188,12 +188,25 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                         Expression::Call(call) => {
                             apply_function(call, &cur_node, &mut nodes_stack, &mut env_stack)?
                         }
-                        //     Expression::StringLiteral(string) => Ok(Object::String(Str {
-                        //         value: string.token.to_string(),
-                        //     })),
-                        //     Expression::ArrayLiteral(array) => Ok(Object::Array(Array {
-                        //         elements: eval_expressions(&array.elements, env.clone())?,
-                        //     })),
+                        Expression::StringLiteral(string) => Some(Object::String(Str {
+                            value: string.token.to_string(),
+                        })),
+                        Expression::ArrayLiteral(array) => {
+                            match cur_node.borrow().evaluated_children.len() {
+                                l if l < array.elements.len() => {
+                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
+                                    nodes_stack.push(AstTraverse::new(
+                                        Rc::clone(&array.elements.get(l).unwrap()).into(),
+                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
+                                    ));
+
+                                    None
+                                }
+                                _ => Some(Object::Array(Array {
+                                    elements: cur_node.borrow().evaluated_children.clone(),
+                                })),
+                            }
+                        }
                         //     Expression::IndexExpression(index_expr) => {
                         //         let left = eval(Rc::clone(&index_expr.left).into(), &Rc::clone(&env))?;
                         //         let index = eval(Rc::clone(&index_expr.index).into(), env)?;
@@ -942,51 +955,52 @@ addTwo(2);"#;
         }
     }
 
-    //     #[test]
-    //     fn string_literal_evaluation_test() {
-    //         let input = r#""Hello World!""#;
-    //
-    //         let result = evaluate_input(input.to_string());
-    //
-    //         match result {
-    //             Object::String(string) => assert_eq!(string.value, "Hello World!"),
-    //             actual => panic!("string expected, but got {actual}"),
-    //         }
-    //     }
-    //
-    //     #[test]
-    //     fn string_concatination_evaluation_test() {
-    //         let input = r#""Hello" + " " + "World!""#;
-    //
-    //         let result = evaluate_input(input.to_string());
-    //
-    //         match result {
-    //             Object::String(string) => assert_eq!(string.value, "Hello World!"),
-    //             actual => panic!("string expected, but got {actual}"),
-    //         }
-    //     }
-    //
-    //     #[test]
-    //     fn builtin_evaluation_test() {
-    //         let expected = vec![
-    //             ("len(\"\")", 0),
-    //             ("len(\"four\")", 4),
-    //             ("len(\"hello world\")", 11),
-    //             ("len([1, 4, 9, 5])", 4),
-    //             ("first([1, 4, 9, 5])", 1),
-    //             ("last([1, 4, 9, 5])", 5),
-    //         ];
-    //
-    //         for (input, expected_result) in expected {
-    //             let result = evaluate_input(input.to_string());
-    //
-    //             match result {
-    //                 Object::Integer(int) => assert_eq!(int.value, expected_result),
-    //                 actual => panic!("integer expected, but got {actual}"),
-    //             }
-    //         }
-    //     }
-    //
+    #[test]
+    fn string_literal_evaluation_test() {
+        let input = r#""Hello World!""#;
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::String(string) => assert_eq!(string.value, "Hello World!"),
+            actual => panic!("string expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn string_concatination_evaluation_test() {
+        let input = r#""Hello" + " " + "World!""#;
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::String(string) => assert_eq!(string.value, "Hello World!"),
+            actual => panic!("string expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn builtin_evaluation_test() {
+        let expected = vec![
+            ("len(\"\")", 0),
+            ("len(\"four\")", 4),
+            ("len(\"hello world\")", 11),
+            ("len([1, 4, 9, 5])", 4),
+            ("first([1, 4, 9, 5])", 1),
+            ("last([1, 4, 9, 5])", 5),
+        ];
+
+        for (input, expected_result) in expected {
+            println!("here");
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => assert_eq!(int.value, expected_result),
+                actual => panic!("integer expected, but got {actual}"),
+            }
+        }
+    }
+
     //     #[test]
     //     fn array_evaluation_test() {
     //         let input = "[1, 2 * 2, 3 + 3]";
