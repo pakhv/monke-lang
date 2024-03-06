@@ -582,8 +582,8 @@ mod tests {
     use crate::{
         lexer::{lexer::Lexer, token::Token},
         parser::ast::{
-            BlockStatement, Boolean, Expression, Identifier, InfixExpression, IntegerLiteral,
-            LetStatement, Program, Statement,
+            Boolean, Expression, Identifier, InfixExpression, IntegerLiteral, LetStatement,
+            Program, Statement,
         },
     };
 

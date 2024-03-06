@@ -2,7 +2,9 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     lexer::token::Token,
-    parser::ast::{BlockStatement, CallExpression, Expression, IfExpression, Program, Statement},
+    parser::ast::{
+        CallExpression, Expression, HashLiteral, IfExpression, IndexExpression, Program, Statement,
+    },
     result::InterpreterResult,
 };
 
@@ -16,6 +18,7 @@ use super::{
 #[derive(Debug)]
 enum AstTraverse {
     Node(Rc<RefCell<AstTraverseNode>>),
+    #[allow(dead_code)]
     None,
 }
 
@@ -207,56 +210,12 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                                 })),
                             }
                         }
-                        //     Expression::IndexExpression(index_expr) => {
-                        //         let left = eval(Rc::clone(&index_expr.left).into(), &Rc::clone(&env))?;
-                        //         let index = eval(Rc::clone(&index_expr.index).into(), env)?;
-                        //
-                        //         match (left, index) {
-                        //             (Object::Array(array), Object::Integer(idx)) => {
-                        //                 let max_idx = array.elements.len() - 1;
-                        //
-                        //                 if idx.value < 0 || idx.value as usize > max_idx {
-                        //                     return Ok(Object::Null(Null {}));
-                        //                 }
-                        //
-                        //                 Ok(array.elements.get(idx.value as usize).cloned().unwrap())
-                        //             }
-                        //             (Object::HashTable(hash_table), idx) => {
-                        //                 match idx {
-                        //         Object::String(_) | Object::Integer(_) | Object::Boolean(_) => (),
-                        //         actual => return Err(format!("unable to index hash table; only Integer, String or Boolean could be used as key, but got \"{actual}\"")),
-                        //     };
-                        //
-                        //                 Ok(hash_table
-                        //                     .pairs
-                        //                     .get(&idx)
-                        //                     .unwrap_or(&Object::Null(Null {}))
-                        //                     .clone())
-                        //             }
-                        //             (actual_left, actual_index) => Err(format!(
-                        //     "index operator not supported for \"{actual_left}\" and \"{actual_index}\""
-                        // )),
-                        //         }
-                        //     }
-                        //     Expression::HashLiteral(hash_literal) => {
-                        //         let mut pairs: HashMap<Object, Object> = HashMap::new();
-                        //
-                        //         for (key_node, value_node) in &hash_literal.pairs {
-                        //             let key = eval(Rc::clone(key_node).into(), &Rc::clone(&env))?;
-                        //
-                        //             match key {
-                        //     Object::String(_) | Object::Integer(_) | Object::Boolean(_) => (),
-                        //     actual => return Err(format!("unable to evaluate hash literal; only Integer, String or Boolean could be used as key, but got \"{actual}\"")),
-                        // };
-                        //
-                        //             let value = eval(Rc::clone(value_node).into(), &Rc::clone(&env))?;
-                        //
-                        //             pairs.insert(key, value);
-                        //         }
-                        //
-                        //         Ok(Object::HashTable(HashTable { pairs }))
-                        //     }
-                        _ => todo!(),
+                        Expression::IndexExpression(index_expr) => {
+                            eval_index_expression(index_expr, &cur_node, &mut nodes_stack)?
+                        }
+                        Expression::HashLiteral(hash_literal) => {
+                            eval_hash_literal(hash_literal, &cur_node, &mut nodes_stack)?
+                        }
                     },
                 };
 
@@ -281,6 +240,154 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
             }
             AstTraverse::None => todo!(),
         };
+    }
+}
+
+fn eval_hash_literal(
+    hash_literal: &HashLiteral,
+    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    nodes_stack: &mut Vec<AstTraverse>,
+) -> InterpreterResult<Option<Object>> {
+    match cur_node.borrow().evaluated_children.len() {
+        l if l < 2 * hash_literal.pairs.len() && l & 0x1 == 0 => {
+            add_current_node_to_stack(cur_node, nodes_stack);
+
+            let (key, _) = hash_literal
+                .pairs
+                .iter()
+                .enumerate()
+                .find(|(idx, _)| *idx == l / 2)
+                .unwrap()
+                .1;
+
+            nodes_stack.push(AstTraverse::new(
+                Rc::clone(key).into(),
+                Some(AstTraverse::Node(Rc::clone(cur_node))),
+            ));
+
+            Ok(None)
+        }
+        l if l < 2 * hash_literal.pairs.len() && l & 0x1 == 1 => {
+            match cur_node.borrow().evaluated_children.last().unwrap() {
+                Object::String(_) | Object::Integer(_) | Object::Boolean(_) => (),
+                actual => return Err(format!("unable to evaluate hash literal; only Integer, String or Boolean could be used as key, but got \"{actual}\"")),
+            }
+
+            add_current_node_to_stack(cur_node, nodes_stack);
+
+            let (_, value) = hash_literal
+                .pairs
+                .iter()
+                .enumerate()
+                .find(|(idx, _)| *idx == l / 2)
+                .unwrap()
+                .1;
+
+            nodes_stack.push(AstTraverse::new(
+                Rc::clone(value).into(),
+                Some(AstTraverse::Node(Rc::clone(cur_node))),
+            ));
+
+            Ok(None)
+        }
+        _ => {
+            let mut pairs: HashMap<Object, Object> = HashMap::new();
+            let pairs_num = cur_node.borrow().evaluated_children.len() / 2;
+
+            for i in 0..pairs_num {
+                let key = cur_node
+                    .borrow()
+                    .evaluated_children
+                    .get(2 * i)
+                    .unwrap()
+                    .clone();
+                let value = cur_node
+                    .borrow()
+                    .evaluated_children
+                    .get(2 * i + 1)
+                    .unwrap()
+                    .clone();
+
+                pairs.insert(key, value);
+            }
+
+            Ok(Some(Object::HashTable(HashTable { pairs })))
+        }
+    }
+}
+
+fn eval_index_expression(
+    index_expr: &IndexExpression,
+    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    nodes_stack: &mut Vec<AstTraverse>,
+) -> InterpreterResult<Option<Object>> {
+    match cur_node.borrow().evaluated_children.len() {
+        0 => {
+            add_current_node_to_stack(cur_node, nodes_stack);
+            nodes_stack.push(AstTraverse::new(
+                Rc::clone(&index_expr.left).into(),
+                Some(AstTraverse::Node(Rc::clone(cur_node))),
+            ));
+
+            Ok(None)
+        }
+        1 => {
+            add_current_node_to_stack(cur_node, nodes_stack);
+            nodes_stack.push(AstTraverse::new(
+                Rc::clone(&index_expr.index).into(),
+                Some(AstTraverse::Node(Rc::clone(cur_node))),
+            ));
+
+            Ok(None)
+        }
+        _ => {
+            let left = cur_node
+                .borrow()
+                .evaluated_children
+                .get(0)
+                .ok_or(String::from(
+                    "internal error while evaluating index expression",
+                ))?
+                .clone();
+            let index = cur_node
+                .borrow()
+                .evaluated_children
+                .get(1)
+                .ok_or(String::from(
+                    "internal error while evaluating index expression",
+                ))?
+                .clone();
+
+            match (left, index) {
+                (Object::Array(array), Object::Integer(idx)) => {
+                    let max_idx = array.elements.len() - 1;
+
+                    if idx.value < 0 || idx.value as usize > max_idx {
+                        return Ok(Some(Object::Null(Null {})));
+                    }
+
+                    Ok(Some(
+                        array.elements.get(idx.value as usize).cloned().unwrap(),
+                    ))
+                }
+                (Object::HashTable(hash_table), idx) => {
+                    match idx {
+                    Object::String(_) | Object::Integer(_) | Object::Boolean(_) => (),
+                    actual => return Err(format!("unable to index hash table; only Integer, String or Boolean could be used as key, but got \"{actual}\"")), };
+
+                    Ok(Some(
+                        hash_table
+                            .pairs
+                            .get(&idx)
+                            .unwrap_or(&Object::Null(Null {}))
+                            .clone(),
+                    ))
+                }
+                (actual_left, actual_index) => Err(format!(
+                    "index operator not supported for \"{actual_left}\" and \"{actual_index}\""
+                ))?,
+            }
+        }
     }
 }
 
@@ -367,36 +474,6 @@ fn extend_function_environment(func: Function, args: Vec<Object>) -> Rc<RefCell<
     }
 
     Rc::new(RefCell::new(env))
-}
-
-fn eval_expressions(
-    arguments: &Vec<Rc<Expression>>,
-    env: Rc<RefCell<Environment>>,
-) -> InterpreterResult<Vec<Object>> {
-    let mut result = vec![];
-
-    for arg in arguments {
-        result.push(eval(Rc::clone(arg).into(), &Rc::clone(&env))?);
-    }
-
-    Ok(result)
-}
-
-fn eval_block_statement(
-    block: &BlockStatement,
-    env: Rc<RefCell<Environment>>,
-) -> InterpreterResult<Object> {
-    let mut result = Object::Null(Null {});
-
-    for statement in &block.statements {
-        result = eval(Rc::clone(statement).into(), &Rc::clone(&env))?;
-
-        if let Object::Return(_) = result {
-            return Ok(result);
-        }
-    }
-
-    Ok(result)
 }
 
 fn eval_prefix_expression(token: &Token, right: &Object) -> InterpreterResult<Object> {
@@ -1001,184 +1078,201 @@ addTwo(2);"#;
         }
     }
 
-    //     #[test]
-    //     fn array_evaluation_test() {
-    //         let input = "[1, 2 * 2, 3 + 3]";
-    //
-    //         let result = evaluate_input(input.to_string());
-    //
-    //         match result {
-    //             Object::Array(array) => {
-    //                 assert_eq!(array.elements.len(), 3);
-    //
-    //                 match (
-    //                     array.elements.get(0).unwrap(),
-    //                     array.elements.get(1).unwrap(),
-    //                     array.elements.get(2).unwrap(),
-    //                 ) {
-    //                     (Object::Integer(int1), Object::Integer(int2), Object::Integer(int3)) => {
-    //                         assert_eq!(int1.value, 1);
-    //                         assert_eq!(int2.value, 4);
-    //                         assert_eq!(int3.value, 6);
-    //                     }
-    //                     (actual1, actual2, actual3) => {
-    //                         panic!("integers expected, but got {actual1}, {actual2}, {actual3}")
-    //                     }
-    //                 }
-    //             }
-    //             actual => panic!("array expected, but got {actual}"),
-    //         }
-    //     }
-    //
-    //     #[test]
-    //     fn array_index_expression_test() {
-    //         let expected = vec![
-    //             ("[1, 2, 3][0]", 1),
-    //             ("[1, 2, 3][1]", 2),
-    //             ("[1, 2, 3][2]", 3),
-    //             ("let i = 0; [1][i];", 1),
-    //             ("[1, 2, 3][1 + 1];", 3),
-    //             ("let myArray = [1, 2, 3]; myArray[2];", 3),
-    //             (
-    //                 "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
-    //                 6,
-    //             ),
-    //             ("let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]", 2),
-    //         ];
-    //
-    //         for (input, expected_result) in expected {
-    //             let result = evaluate_input(input.to_string());
-    //
-    //             match result {
-    //                 Object::Integer(int) => assert_eq!(int.value, expected_result),
-    //                 actual => panic!("integer expected, but got {actual}"),
-    //             }
-    //         }
-    //     }
-    //
-    //     #[test]
-    //     fn array_builtins_test() {
-    //         let expected = vec![
-    //             (
-    //                 r#"
-    // let map = fn(arr, f) {
-    //     let iter = fn(arr, accumulated) {
-    //         if (len(arr) == 0) {
-    //             accumulated
-    //         } else {
-    //             iter(rest(arr), push(accumulated, f(first(arr))));
-    //         }
-    //     };
-    //
-    //     iter(arr, []);
-    // };
-    //
-    // let a = [1, 2, 3, 4];
-    // let double = fn(x) { x * 2 };
-    // map(a, double);
-    // "#,
-    //                 "[2, 4, 6, 8]",
-    //             ),
-    //             (
-    //                 r#"
-    // let reduce = fn(arr, initial, f) {
-    //     let iter = fn(arr, result) {
-    //         if (len(arr) == 0) {
-    //             result
-    //         } else {
-    //             iter(rest(arr), f(result, first(arr)));
-    //         }
-    //     };
-    //     iter(arr, initial);
-    // };
-    //
-    // let sum = fn(arr) {
-    //     reduce(arr, 0, fn(initial, el) { initial + el });
-    // };
-    // sum([1, 2, 3, 4, 5]);
-    // "#,
-    //                 "15",
-    //             ),
-    //         ];
-    //
-    //         for (input, expected_result) in expected {
-    //             let result = evaluate_input(input.to_string());
-    //
-    //             assert_eq!(result.to_string(), expected_result);
-    //         }
-    //     }
-    //
-    //     #[test]
-    //     fn hash_literals_evaluation_test() {
-    //         let input = r#"let two = "two";
-    // {
-    //     "one": 10 - 9,
-    //     two: 1 + 1,
-    //     "thr" + "ee": 6 / 2,
-    //     4: 4,
-    //     true: 5,
-    //     false: 6
-    // }"#;
-    //
-    //         let expected = vec![
-    //             (
-    //                 Object::String(Str {
-    //                     value: String::from("one"),
-    //                 }),
-    //                 1,
-    //             ),
-    //             (
-    //                 Object::String(Str {
-    //                     value: String::from("two"),
-    //                 }),
-    //                 2,
-    //             ),
-    //             (
-    //                 Object::String(Str {
-    //                     value: String::from("three"),
-    //                 }),
-    //                 3,
-    //             ),
-    //             (Object::Integer(Integer { value: 4 }), 4),
-    //             (Object::Boolean(Boolean { value: true }), 5),
-    //             (Object::Boolean(Boolean { value: false }), 6),
-    //         ];
-    //
-    //         let result = evaluate_input(input.to_string());
-    //
-    //         match result {
-    //             Object::HashTable(hash) => {
-    //                 assert_eq!(hash.pairs.len(), 6);
-    //
-    //                 for (key, expected_value) in expected {
-    //                     let result_value = hash.pairs.get(&key);
-    //                     assert!(result_value.is_some());
-    //
-    //                     match result_value.unwrap() {
-    //                         Object::Integer(int) => assert_eq!(int.value, expected_value),
-    //                         actual => panic!("integer expected, but got {actual}"),
-    //                     }
-    //                 }
-    //             }
-    //             actual => panic!("hash map expected, but got {actual}"),
-    //         }
-    //     }
-    //
-    //     #[test]
-    //     fn hash_indexing_evaluation_test() {
-    //         let expected = vec![
-    //             (r#"{"foo": 5}["foo"]"#, "5"),
-    //             (r#"{"foo": 5}["bar"]"#, "null"),
-    //             (r#"let key = "foo"; {"foo": 5}[key]"#, "5"),
-    //             (r#"{}["foo"]"#, "null"),
-    //             (r#"{5: 5}[5]"#, "5"),
-    //             (r#"{true: 5}[true]"#, "5"),
-    //             (r#"{false: 5}[false]"#, "5"),
-    //         ];
-    //
-    //         for (input, expected_result) in expected {
-    //             let result = evaluate_input(input.to_string());
-    //             assert_eq!(result.to_string().as_str(), expected_result);
-    //         }
-    //     }
+    #[test]
+    fn array_evaluation_test() {
+        let input = "[1, 2 * 2, 3 + 3]";
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::Array(array) => {
+                assert_eq!(array.elements.len(), 3);
+
+                match (
+                    array.elements.get(0).unwrap(),
+                    array.elements.get(1).unwrap(),
+                    array.elements.get(2).unwrap(),
+                ) {
+                    (Object::Integer(int1), Object::Integer(int2), Object::Integer(int3)) => {
+                        assert_eq!(int1.value, 1);
+                        assert_eq!(int2.value, 4);
+                        assert_eq!(int3.value, 6);
+                    }
+                    (actual1, actual2, actual3) => {
+                        panic!("integers expected, but got {actual1}, {actual2}, {actual3}")
+                    }
+                }
+            }
+            actual => panic!("array expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn array_index_expression_test() {
+        let expected = vec![
+            ("[1, 2, 3][0]", 1),
+            ("[1, 2, 3][1]", 2),
+            ("[1, 2, 3][2]", 3),
+            ("let i = 0; [1][i];", 1),
+            ("[1, 2, 3][1 + 1];", 3),
+            ("let myArray = [1, 2, 3]; myArray[2];", 3),
+            (
+                "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];",
+                6,
+            ),
+            ("let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]", 2),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            match result {
+                Object::Integer(int) => assert_eq!(int.value, expected_result),
+                actual => panic!("integer expected, but got {actual}"),
+            }
+        }
+    }
+
+    #[test]
+    fn array_builtins_test() {
+        let expected = vec![
+            (
+                r#"
+let map = fn(arr, f) {
+    let iter = fn(arr, accumulated) {
+        if (len(arr) == 0) {
+            accumulated
+        } else {
+            iter(rest(arr), push(accumulated, f(first(arr))));
+        }
+    };
+
+    iter(arr, []);
+};
+
+let a = [1, 2, 3, 4];
+let double = fn(x) { x * 2 };
+map(a, double);
+    "#,
+                "[2, 4, 6, 8]",
+            ),
+            (
+                r#"
+let reduce = fn(arr, initial, f) {
+    let iter = fn(arr, result) {
+        if (len(arr) == 0) {
+            result
+        } else {
+            iter(rest(arr), f(result, first(arr)));
+        }
+    };
+    iter(arr, initial);
+};
+
+let sum = fn(arr) {
+    reduce(arr, 0, fn(initial, el) { initial + el });
+};
+sum([1, 2, 3, 4, 5]);
+    "#,
+                "15",
+            ),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+
+            assert_eq!(result.to_string(), expected_result);
+        }
+    }
+
+    #[test]
+    fn hash_literals_evaluation_test() {
+        let input = r#"let two = "two";
+{
+    "one": 10 - 9,
+    two: 1 + 1,
+    "thr" + "ee": 6 / 2,
+    4: 4,
+    true: 5,
+    false: 6
+}"#;
+
+        let expected = vec![
+            (
+                Object::String(Str {
+                    value: String::from("one"),
+                }),
+                1,
+            ),
+            (
+                Object::String(Str {
+                    value: String::from("two"),
+                }),
+                2,
+            ),
+            (
+                Object::String(Str {
+                    value: String::from("three"),
+                }),
+                3,
+            ),
+            (Object::Integer(Integer { value: 4 }), 4),
+            (Object::Boolean(Boolean { value: true }), 5),
+            (Object::Boolean(Boolean { value: false }), 6),
+        ];
+
+        let result = evaluate_input(input.to_string());
+
+        match result {
+            Object::HashTable(hash) => {
+                assert_eq!(hash.pairs.len(), 6);
+
+                for (key, expected_value) in expected {
+                    let result_value = hash.pairs.get(&key);
+                    assert!(result_value.is_some());
+
+                    match result_value.unwrap() {
+                        Object::Integer(int) => assert_eq!(int.value, expected_value),
+                        actual => panic!("integer expected, but got {actual}"),
+                    }
+                }
+            }
+            actual => panic!("hash map expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn hash_indexing_evaluation_test() {
+        let expected = vec![
+            (r#"{"foo": 5}["foo"]"#, "5"),
+            (r#"{"foo": 5}["bar"]"#, "null"),
+            (r#"let key = "foo"; {"foo": 5}[key]"#, "5"),
+            (r#"{}["foo"]"#, "null"),
+            (r#"{5: 5}[5]"#, "5"),
+            (r#"{true: 5}[true]"#, "5"),
+            (r#"{false: 5}[false]"#, "5"),
+        ];
+
+        for (input, expected_result) in expected {
+            let result = evaluate_input(input.to_string());
+            assert_eq!(result.to_string().as_str(), expected_result);
+        }
+    }
+
+    #[test]
+    fn stack_overflow_test() {
+        let input = r#"
+let counter = fn(x) {
+    if (x > 1000) {
+        return true;
+    } else {
+        let foobar = 9999;
+        counter(x + 1);
+    }
+};
+counter(0);
+"#;
+
+        _ = evaluate_input(input.to_string());
+    }
 }

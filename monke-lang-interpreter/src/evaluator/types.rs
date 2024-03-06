@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 use crate::{
-    parser::ast::{BlockStatement, Identifier, Statement},
+    parser::ast::{Identifier, Statement},
     result::InterpreterResult,
 };
 
