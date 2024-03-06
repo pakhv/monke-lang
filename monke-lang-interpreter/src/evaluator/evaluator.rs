@@ -3,7 +3,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use crate::{
     lexer::token::Token,
     parser::ast::{
-        CallExpression, Expression, HashLiteral, IfExpression, IndexExpression, Program, Statement,
+        CallExpression, Expression, HashLiteral, IfExpression, IndexExpression, InfixExpression,
+        Program, Statement,
     },
     result::InterpreterResult,
 };
@@ -51,173 +52,9 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
     let mut env_stack = vec![Rc::clone(env)];
 
     loop {
-        let env = env_stack.last().unwrap();
-
         match nodes_stack.pop().unwrap() {
             AstTraverse::Node(cur_node) => {
-                let evaluated_node = match &cur_node.as_ref().borrow().node {
-                    Program::Statement(statement) => match statement.as_ref() {
-                        Statement::Expression(expr) => {
-                            match cur_node.borrow().evaluated_children.last() {
-                                Some(expr) => Some(expr.clone()),
-                                None => {
-                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
-                                    nodes_stack.push(AstTraverse::new(
-                                        Rc::clone(&expr.expression).into(),
-                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                                    ));
-                                    None
-                                }
-                            }
-                        }
-                        Statement::Block(block) => {
-                            eval_program(&block.statements, &cur_node, &mut nodes_stack, false)
-                        }
-                        Statement::Return(return_statement) => {
-                            match cur_node.borrow().evaluated_children.last() {
-                                Some(return_value) => Some(Object::Return(Return {
-                                    value: Box::new(return_value.clone()),
-                                })),
-                                None => {
-                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
-                                    nodes_stack.push(AstTraverse::new(
-                                        Rc::clone(&return_statement.return_value).into(),
-                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                                    ));
-
-                                    None
-                                }
-                            }
-                        }
-                        Statement::Let(let_statement) => {
-                            match cur_node.borrow().evaluated_children.last() {
-                                Some(let_value) => {
-                                    let value_key = let_statement.name.token.to_string();
-                                    let value = env.borrow_mut().set(value_key, let_value.clone());
-                                    Some(value)
-                                }
-                                None => {
-                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
-                                    nodes_stack.push(AstTraverse::new(
-                                        Rc::clone(&let_statement.value).into(),
-                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                                    ));
-
-                                    None
-                                }
-                            }
-                        }
-                    },
-                    Program::Statements(statements) => {
-                        eval_program(statements, &cur_node, &mut nodes_stack, true)
-                    }
-                    Program::Expression(expr) => match expr.as_ref() {
-                        Expression::IntegerLiteral(int) => {
-                            Some(Object::Integer(Integer { value: int.value }))
-                        }
-                        Expression::Boolean(bool) => {
-                            Some(Object::Boolean(Boolean { value: bool.value }))
-                        }
-                        Expression::Prefix(prefix) => {
-                            match cur_node.borrow().evaluated_children.last() {
-                                Some(right) => Some(eval_prefix_expression(&prefix.token, right)?),
-                                None => {
-                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
-                                    nodes_stack.push(AstTraverse::new(
-                                        Rc::clone(&prefix.right).into(),
-                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                                    ));
-
-                                    None
-                                }
-                            }
-                        }
-                        Expression::Infix(infix) => {
-                            match cur_node.borrow().evaluated_children.len() {
-                                0 => {
-                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
-                                    nodes_stack.push(AstTraverse::new(
-                                        Rc::clone(&infix.left).into(),
-                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                                    ));
-                                    nodes_stack.push(AstTraverse::new(
-                                        Rc::clone(&infix.right).into(),
-                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                                    ));
-                                    None
-                                }
-                                _ => {
-                                    let left = cur_node
-                                        .borrow()
-                                        .evaluated_children
-                                        .get(1)
-                                        .ok_or(String::from(
-                                            "internal error while evaluating infix expression",
-                                        ))?
-                                        .clone();
-                                    let right = cur_node
-                                        .borrow()
-                                        .evaluated_children
-                                        .get(0)
-                                        .ok_or(String::from(
-                                            "internal error while evaluating infix expression",
-                                        ))?
-                                        .clone();
-                                    Some(eval_infix_expression(&infix.token, left, right)?)
-                                }
-                            }
-                        }
-                        Expression::If(if_expr) => {
-                            eval_if_expression(if_expr, &cur_node, &mut nodes_stack)
-                        }
-                        Expression::Identifier(ident) => {
-                            let value_key = ident.token.to_string();
-
-                            match env.borrow().get(&value_key) {
-                                    Some(obj) => Some(obj),
-                                    None => match get_builtin_function(&value_key) {
-                                        Some(builtin) => Some(builtin),
-                                        None => Err(format!(
-                                "unable to evaluate identifier, identifier \"{value_key}\" not found"
-                            ))?,
-                                    },
-                                }
-                        }
-                        Expression::FunctionLiteral(func) => Some(Object::Function(Function {
-                            parameters: func.parameters.clone(),
-                            body: func.body.clone(),
-                            env: OuterEnvWrapper(env.clone()),
-                        })),
-                        Expression::Call(call) => {
-                            apply_function(call, &cur_node, &mut nodes_stack, &mut env_stack)?
-                        }
-                        Expression::StringLiteral(string) => Some(Object::String(Str {
-                            value: string.token.to_string(),
-                        })),
-                        Expression::ArrayLiteral(array) => {
-                            match cur_node.borrow().evaluated_children.len() {
-                                l if l < array.elements.len() => {
-                                    add_current_node_to_stack(&cur_node, &mut nodes_stack);
-                                    nodes_stack.push(AstTraverse::new(
-                                        Rc::clone(&array.elements.get(l).unwrap()).into(),
-                                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                                    ));
-
-                                    None
-                                }
-                                _ => Some(Object::Array(Array {
-                                    elements: cur_node.borrow().evaluated_children.clone(),
-                                })),
-                            }
-                        }
-                        Expression::IndexExpression(index_expr) => {
-                            eval_index_expression(index_expr, &cur_node, &mut nodes_stack)?
-                        }
-                        Expression::HashLiteral(hash_literal) => {
-                            eval_hash_literal(hash_literal, &cur_node, &mut nodes_stack)?
-                        }
-                    },
-                };
+                let evaluated_node = eval_ast_node(&cur_node, &mut nodes_stack, &mut env_stack)?;
 
                 match evaluated_node {
                     Some(obj) => {
@@ -238,8 +75,135 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                     None => (),
                 }
             }
-            AstTraverse::None => todo!(),
+            AstTraverse::None => Err(String::from(""))?,
         };
+    }
+}
+
+fn eval_ast_node(
+    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    nodes_stack: &mut Vec<AstTraverse>,
+    env_stack: &mut Vec<Rc<RefCell<Environment>>>,
+) -> InterpreterResult<Option<Object>> {
+    let env = env_stack.last().unwrap();
+
+    match &cur_node.as_ref().borrow().node {
+        Program::Statement(statement) => match statement.as_ref() {
+            Statement::Expression(expr) => match cur_node.borrow().evaluated_children.last() {
+                Some(expr) => Ok(Some(expr.clone())),
+                None => {
+                    add_current_and_new_nodes_to_stack(
+                        Rc::clone(&expr.expression).into(),
+                        cur_node,
+                        nodes_stack,
+                    );
+                    Ok(None)
+                }
+            },
+            Statement::Block(block) => Ok(eval_program(
+                &block.statements,
+                cur_node,
+                nodes_stack,
+                false,
+            )),
+            Statement::Return(return_statement) => {
+                match cur_node.borrow().evaluated_children.last() {
+                    Some(return_value) => Ok(Some(Object::Return(Return {
+                        value: Box::new(return_value.clone()),
+                    }))),
+                    None => {
+                        add_current_and_new_nodes_to_stack(
+                            Rc::clone(&return_statement.return_value).into(),
+                            cur_node,
+                            nodes_stack,
+                        );
+
+                        Ok(None)
+                    }
+                }
+            }
+            Statement::Let(let_statement) => match cur_node.borrow().evaluated_children.last() {
+                Some(let_value) => {
+                    let value_key = let_statement.name.token.to_string();
+                    let value = env.borrow_mut().set(value_key, let_value.clone());
+                    Ok(Some(value))
+                }
+                None => {
+                    add_current_and_new_nodes_to_stack(
+                        Rc::clone(&let_statement.value).into(),
+                        cur_node,
+                        nodes_stack,
+                    );
+
+                    Ok(None)
+                }
+            },
+        },
+        Program::Statements(statements) => {
+            Ok(eval_program(statements, cur_node, nodes_stack, true))
+        }
+        Program::Expression(expr) => match expr.as_ref() {
+            Expression::IntegerLiteral(int) => {
+                Ok(Some(Object::Integer(Integer { value: int.value })))
+            }
+            Expression::Boolean(bool) => Ok(Some(Object::Boolean(Boolean { value: bool.value }))),
+            Expression::Prefix(prefix) => match cur_node.borrow().evaluated_children.last() {
+                Some(right) => Ok(Some(eval_prefix_expression(&prefix.token, right)?)),
+                None => {
+                    add_current_and_new_nodes_to_stack(
+                        Rc::clone(&prefix.right).into(),
+                        cur_node,
+                        nodes_stack,
+                    );
+
+                    Ok(None)
+                }
+            },
+            Expression::Infix(infix) => eval_infix_expression(infix, cur_node, nodes_stack),
+            Expression::If(if_expr) => Ok(eval_if_expression(if_expr, cur_node, nodes_stack)),
+            Expression::Identifier(ident) => {
+                let value_key = ident.token.to_string();
+
+                match env.borrow().get(&value_key) {
+                    Some(obj) => Ok(Some(obj)),
+                    None => match get_builtin_function(&value_key) {
+                        Some(builtin) => Ok(Some(builtin)),
+                        None => Err(format!(
+                            "unable to evaluate identifier, identifier \"{value_key}\" not found"
+                        ))?,
+                    },
+                }
+            }
+            Expression::FunctionLiteral(func) => Ok(Some(Object::Function(Function {
+                parameters: func.parameters.clone(),
+                body: func.body.clone(),
+                env: OuterEnvWrapper(env.clone()),
+            }))),
+            Expression::Call(call) => apply_function(call, cur_node, nodes_stack, env_stack),
+            Expression::StringLiteral(string) => Ok(Some(Object::String(Str {
+                value: string.token.to_string(),
+            }))),
+            Expression::ArrayLiteral(array) => match cur_node.borrow().evaluated_children.len() {
+                l if l < array.elements.len() => {
+                    add_current_and_new_nodes_to_stack(
+                        Rc::clone(&array.elements.get(l).unwrap()).into(),
+                        cur_node,
+                        nodes_stack,
+                    );
+
+                    Ok(None)
+                }
+                _ => Ok(Some(Object::Array(Array {
+                    elements: cur_node.borrow().evaluated_children.clone(),
+                }))),
+            },
+            Expression::IndexExpression(index_expr) => {
+                eval_index_expression(index_expr, cur_node, nodes_stack)
+            }
+            Expression::HashLiteral(hash_literal) => {
+                eval_hash_literal(hash_literal, cur_node, nodes_stack)
+            }
+        },
     }
 }
 
@@ -250,8 +214,6 @@ fn eval_hash_literal(
 ) -> InterpreterResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
         l if l < 2 * hash_literal.pairs.len() && l & 0x1 == 0 => {
-            add_current_node_to_stack(cur_node, nodes_stack);
-
             let (key, _) = hash_literal
                 .pairs
                 .iter()
@@ -260,10 +222,7 @@ fn eval_hash_literal(
                 .unwrap()
                 .1;
 
-            nodes_stack.push(AstTraverse::new(
-                Rc::clone(key).into(),
-                Some(AstTraverse::Node(Rc::clone(cur_node))),
-            ));
+            add_current_and_new_nodes_to_stack(Rc::clone(key).into(), cur_node, nodes_stack);
 
             Ok(None)
         }
@@ -273,8 +232,6 @@ fn eval_hash_literal(
                 actual => return Err(format!("unable to evaluate hash literal; only Integer, String or Boolean could be used as key, but got \"{actual}\"")),
             }
 
-            add_current_node_to_stack(cur_node, nodes_stack);
-
             let (_, value) = hash_literal
                 .pairs
                 .iter()
@@ -283,10 +240,7 @@ fn eval_hash_literal(
                 .unwrap()
                 .1;
 
-            nodes_stack.push(AstTraverse::new(
-                Rc::clone(value).into(),
-                Some(AstTraverse::Node(Rc::clone(cur_node))),
-            ));
+            add_current_and_new_nodes_to_stack(Rc::clone(value).into(), cur_node, nodes_stack);
 
             Ok(None)
         }
@@ -323,20 +277,20 @@ fn eval_index_expression(
 ) -> InterpreterResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
         0 => {
-            add_current_node_to_stack(cur_node, nodes_stack);
-            nodes_stack.push(AstTraverse::new(
+            add_current_and_new_nodes_to_stack(
                 Rc::clone(&index_expr.left).into(),
-                Some(AstTraverse::Node(Rc::clone(cur_node))),
-            ));
+                cur_node,
+                nodes_stack,
+            );
 
             Ok(None)
         }
         1 => {
-            add_current_node_to_stack(cur_node, nodes_stack);
-            nodes_stack.push(AstTraverse::new(
+            add_current_and_new_nodes_to_stack(
                 Rc::clone(&index_expr.index).into(),
-                Some(AstTraverse::Node(Rc::clone(cur_node))),
-            ));
+                cur_node,
+                nodes_stack,
+            );
 
             Ok(None)
         }
@@ -391,11 +345,48 @@ fn eval_index_expression(
     }
 }
 
-fn add_current_node_to_stack(
+fn eval_infix_expression(
+    infix: &InfixExpression,
     cur_node: &Rc<RefCell<AstTraverseNode>>,
     nodes_stack: &mut Vec<AstTraverse>,
-) {
-    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+) -> InterpreterResult<Option<Object>> {
+    match cur_node.borrow().evaluated_children.len() {
+        0 => {
+            add_current_and_new_nodes_to_stack(
+                Rc::clone(&infix.left).into(),
+                cur_node,
+                nodes_stack,
+            );
+            Ok(None)
+        }
+        1 => {
+            add_current_and_new_nodes_to_stack(
+                Rc::clone(&infix.right).into(),
+                cur_node,
+                nodes_stack,
+            );
+            Ok(None)
+        }
+        _ => {
+            let left = cur_node
+                .borrow()
+                .evaluated_children
+                .get(0)
+                .ok_or(String::from(
+                    "internal error while evaluating infix expression",
+                ))?
+                .clone();
+            let right = cur_node
+                .borrow()
+                .evaluated_children
+                .get(1)
+                .ok_or(String::from(
+                    "internal error while evaluating infix expression",
+                ))?
+                .clone();
+            Ok(Some(calculate_infix_expression(&infix.token, left, right)?))
+        }
+    }
 }
 
 fn apply_function(
@@ -406,20 +397,19 @@ fn apply_function(
 ) -> InterpreterResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
         0 => {
-            add_current_node_to_stack(cur_node, nodes_stack);
-            nodes_stack.push(AstTraverse::new(
+            add_current_and_new_nodes_to_stack(
                 Rc::clone(&call.function).into(),
-                Some(AstTraverse::Node(Rc::clone(cur_node))),
-            ));
-
+                cur_node,
+                nodes_stack,
+            );
             Ok(None)
         }
         l if l <= call.arguments.len() => {
-            add_current_node_to_stack(cur_node, nodes_stack);
-            nodes_stack.push(AstTraverse::new(
+            add_current_and_new_nodes_to_stack(
                 Rc::clone(&call.arguments.get(l - 1).unwrap()).into(),
-                Some(AstTraverse::Node(Rc::clone(cur_node))),
-            ));
+                cur_node,
+                nodes_stack,
+            );
 
             Ok(None)
         }
@@ -439,12 +429,11 @@ fn apply_function(
             match function {
                 Object::Function(func) => {
                     env_stack.push(extend_function_environment(func.clone(), args));
-
-                    add_current_node_to_stack(cur_node, nodes_stack);
-                    nodes_stack.push(AstTraverse::new(
+                    add_current_and_new_nodes_to_stack(
                         Rc::clone(&func.body).into(),
-                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                    ));
+                        cur_node,
+                        nodes_stack,
+                    );
 
                     Ok(None)
                 }
@@ -495,7 +484,11 @@ fn eval_prefix_expression(token: &Token, right: &Object) -> InterpreterResult<Ob
     }
 }
 
-fn eval_infix_expression(token: &Token, left: Object, right: Object) -> InterpreterResult<Object> {
+fn calculate_infix_expression(
+    token: &Token,
+    left: Object,
+    right: Object,
+) -> InterpreterResult<Object> {
     match (left, right) {
         (Object::Integer(int_left), Object::Integer(int_right)) => match token {
             Token::Plus => Ok(Object::Integer(Integer {
@@ -550,11 +543,11 @@ fn eval_if_expression(
 ) -> Option<Object> {
     match cur_node.borrow().evaluated_children.len() {
         0 => {
-            add_current_node_to_stack(cur_node, nodes_stack);
-            nodes_stack.push(AstTraverse::new(
+            add_current_and_new_nodes_to_stack(
                 Rc::clone(&if_expr.condition).into(),
-                Some(AstTraverse::Node(Rc::clone(&cur_node))),
-            ));
+                cur_node,
+                nodes_stack,
+            );
 
             None
         }
@@ -571,8 +564,6 @@ fn eval_if_expression(
                 return None;
             }
 
-            add_current_node_to_stack(cur_node, nodes_stack);
-
             let is_truthy = match cur_node.borrow().evaluated_children.last().unwrap() {
                 Object::Boolean(bool) => bool.value,
                 _ => true,
@@ -580,19 +571,22 @@ fn eval_if_expression(
 
             match is_truthy {
                 true => {
-                    nodes_stack.push(AstTraverse::new(
+                    add_current_and_new_nodes_to_stack(
                         if_expr.consequence.clone().into(),
-                        Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                    ));
+                        cur_node,
+                        nodes_stack,
+                    );
 
                     None
                 }
                 false => match &if_expr.alternative {
                     Some(alt) => {
-                        nodes_stack.push(AstTraverse::new(
+                        add_current_and_new_nodes_to_stack(
                             alt.clone().into(),
-                            Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                        ));
+                            cur_node,
+                            nodes_stack,
+                        );
+
                         None
                     }
                     None => Some(Object::Null(Null {})),
@@ -615,11 +609,11 @@ fn eval_program(
 
     match cur_node.borrow().evaluated_children.len() {
         l if l == 0 => {
-            add_current_node_to_stack(cur_node, nodes_stack);
-            nodes_stack.push(AstTraverse::new(
+            add_current_and_new_nodes_to_stack(
                 Rc::clone(statements.first().unwrap()).into(),
-                Some(AstTraverse::Node(Rc::clone(&cur_node))),
-            ));
+                cur_node,
+                nodes_stack,
+            );
 
             None
         }
@@ -634,16 +628,28 @@ fn eval_program(
             }
 
             if l != statements.len() {
-                add_current_node_to_stack(cur_node, nodes_stack);
-                nodes_stack.push(AstTraverse::new(
+                add_current_and_new_nodes_to_stack(
                     Rc::clone(statements.get(l).unwrap()).into(),
-                    Some(AstTraverse::Node(Rc::clone(&cur_node))),
-                ));
+                    cur_node,
+                    nodes_stack,
+                );
             }
 
             Some(cur_node.borrow().evaluated_children.last().unwrap().clone())
         }
     }
+}
+
+fn add_current_and_new_nodes_to_stack(
+    program: Program,
+    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    nodes_stack: &mut Vec<AstTraverse>,
+) {
+    nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
+    nodes_stack.push(AstTraverse::new(
+        program,
+        Some(AstTraverse::Node(Rc::clone(cur_node))),
+    ));
 }
 
 fn get_builtin_function(fn_name: &str) -> Option<Object> {
