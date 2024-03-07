@@ -10,48 +10,22 @@ use crate::{
 };
 
 use super::{
-    environment::{Environment, OuterEnvWrapper},
+    ast_traversal::{AstTraverse, AstTraverseNodeRef},
+    environment::{Environment, EnvironmentRef, OuterEnvWrapper},
     types::{
         Array, Boolean, BuiltinFunction, Function, HashTable, Integer, Null, Object, Return, Str,
     },
 };
 
-#[derive(Debug)]
-enum AstTraverse {
-    Node(Rc<RefCell<AstTraverseNode>>),
-    #[allow(dead_code)]
-    None,
-}
-
-#[derive(Debug)]
-struct AstTraverseNode {
-    parent_node: Option<AstTraverse>,
-    node: Program,
-    evaluated_children: Vec<Object>,
-}
-
-impl AstTraverse {
-    fn new(node: Program, parent_node: Option<AstTraverse>) -> Self {
-        AstTraverse::Node(Rc::new(RefCell::new(AstTraverseNode {
-            evaluated_children: vec![],
-            node,
-            parent_node,
-        })))
-    }
-
-    fn as_node(&self) -> Option<&Rc<RefCell<AstTraverseNode>>> {
-        match self {
-            AstTraverse::Node(node) => Some(node),
-            AstTraverse::None => None,
-        }
-    }
-}
-
-pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResult<Object> {
+pub fn eval(program: Program, env: &EnvironmentRef) -> InterpreterResult<Object> {
     let mut nodes_stack = vec![AstTraverse::new(program, None)];
     let mut env_stack = vec![Rc::clone(env)];
 
     loop {
+        if let None = nodes_stack.last() {
+            return Ok(Object::Null(Null {}));
+        }
+
         match nodes_stack.pop().unwrap() {
             AstTraverse::Node(cur_node) => {
                 let evaluated_node = eval_ast_node(&cur_node, &mut nodes_stack, &mut env_stack)?;
@@ -75,15 +49,17 @@ pub fn eval(program: Program, env: &Rc<RefCell<Environment>>) -> InterpreterResu
                     None => (),
                 }
             }
-            AstTraverse::None => Err(String::from(""))?,
+            AstTraverse::None => Err(String::from(
+                "unable to evaluate program, invalid node found",
+            ))?,
         };
     }
 }
 
 fn eval_ast_node(
-    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
-    env_stack: &mut Vec<Rc<RefCell<Environment>>>,
+    env_stack: &mut Vec<EnvironmentRef>,
 ) -> InterpreterResult<Option<Object>> {
     let env = env_stack.last().unwrap();
 
@@ -209,7 +185,7 @@ fn eval_ast_node(
 
 fn eval_hash_literal(
     hash_literal: &HashLiteral,
-    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
 ) -> InterpreterResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
@@ -272,7 +248,7 @@ fn eval_hash_literal(
 
 fn eval_index_expression(
     index_expr: &IndexExpression,
-    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
 ) -> InterpreterResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
@@ -347,7 +323,7 @@ fn eval_index_expression(
 
 fn eval_infix_expression(
     infix: &InfixExpression,
-    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
 ) -> InterpreterResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
@@ -391,9 +367,9 @@ fn eval_infix_expression(
 
 fn apply_function(
     call: &CallExpression,
-    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
-    env_stack: &mut Vec<Rc<RefCell<Environment>>>,
+    env_stack: &mut Vec<EnvironmentRef>,
 ) -> InterpreterResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
         0 => {
@@ -455,7 +431,7 @@ fn apply_function(
     }
 }
 
-fn extend_function_environment(func: Function, args: Vec<Object>) -> Rc<RefCell<Environment>> {
+fn extend_function_environment(func: Function, args: Vec<Object>) -> EnvironmentRef {
     let mut env = Environment::new_outer(func.env.0);
 
     for (idx, param) in func.parameters.iter().enumerate() {
@@ -538,7 +514,7 @@ fn calculate_infix_expression(
 
 fn eval_if_expression(
     if_expr: &IfExpression,
-    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
 ) -> Option<Object> {
     match cur_node.borrow().evaluated_children.len() {
@@ -599,7 +575,7 @@ fn eval_if_expression(
 
 fn eval_program(
     statements: &Vec<Rc<Statement>>,
-    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
     unwrap_return: bool,
 ) -> Option<Object> {
@@ -642,7 +618,7 @@ fn eval_program(
 
 fn add_current_and_new_nodes_to_stack(
     program: Program,
-    cur_node: &Rc<RefCell<AstTraverseNode>>,
+    cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
 ) {
     nodes_stack.push(AstTraverse::Node(Rc::clone(&cur_node)));
