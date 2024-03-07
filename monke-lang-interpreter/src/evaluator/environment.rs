@@ -8,11 +8,13 @@ pub struct Environment {
     pub outer: Option<OuterEnvWrapper>,
 }
 
+pub type EnvironmentRef = Rc<RefCell<Environment>>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OuterEnvWrapper(pub Rc<RefCell<Environment>>);
+pub struct OuterEnvWrapper(pub EnvironmentRef);
 
 impl Deref for OuterEnvWrapper {
-    type Target = Rc<RefCell<Environment>>;
+    type Target = EnvironmentRef;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -33,7 +35,7 @@ impl Environment {
         }
     }
 
-    pub fn new_outer(outer: Rc<RefCell<Environment>>) -> Environment {
+    pub fn new_outer(outer: EnvironmentRef) -> Environment {
         Environment {
             store: HashMap::new(),
             outer: Some(OuterEnvWrapper(outer)),

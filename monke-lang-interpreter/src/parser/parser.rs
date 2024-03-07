@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use super::super::result::InterpreterResult;
 use super::ast::{
@@ -36,7 +37,7 @@ impl Parser {
 
         while self.cur_token.is_some() {
             let statement = self.parse_statement()?;
-            statements.push(statement);
+            statements.push(Rc::new(statement));
 
             self.next_token();
         }
@@ -79,7 +80,7 @@ impl Parser {
 
         self.next_token();
 
-        let value = self.parse_expression(ExpressionType::Lowest as usize)?;
+        let value = Rc::new(self.parse_expression(ExpressionType::Lowest as usize)?);
 
         if self
             .peek_token
@@ -103,7 +104,7 @@ impl Parser {
 
         self.next_token();
 
-        let return_value = self.parse_expression(ExpressionType::Lowest as usize)?;
+        let return_value = Rc::new(self.parse_expression(ExpressionType::Lowest as usize)?);
 
         if self
             .peek_token
@@ -121,7 +122,7 @@ impl Parser {
 
     fn parse_expression_statement(&mut self) -> InterpreterResult<Statement> {
         let cur_token = self.cur_token.clone().unwrap();
-        let statement_expression = self.parse_expression(ExpressionType::Lowest as usize)?;
+        let statement_expression = Rc::new(self.parse_expression(ExpressionType::Lowest as usize)?);
 
         if self
             .peek_token
@@ -137,18 +138,18 @@ impl Parser {
         }))
     }
 
-    fn parse_block_statement(&mut self) -> InterpreterResult<BlockStatement> {
+    fn parse_block_statement(&mut self) -> InterpreterResult<Statement> {
         let token = self.cur_token.clone().unwrap();
         let mut statements = vec![];
 
         self.next_token();
 
         while self.cur_token.as_ref().is_some_and(|t| t != &Token::Rbrace) {
-            statements.push(self.parse_statement()?);
+            statements.push(Rc::new(self.parse_statement()?));
             self.next_token();
         }
 
-        Ok(BlockStatement { token, statements })
+        Ok(Statement::Block(BlockStatement { token, statements }))
     }
 
     fn parse_expression(&mut self, precedence: usize) -> InterpreterResult<Expression> {
@@ -255,12 +256,9 @@ impl Parser {
     fn parse_prefix_expression(parser: &mut Parser) -> InterpreterResult<Expression> {
         let token = parser.cur_token.clone().unwrap();
         parser.next_token();
-        let expression = parser.parse_expression(ExpressionType::Prefix as usize)?;
+        let right = Rc::new(parser.parse_expression(ExpressionType::Prefix as usize)?);
 
-        Ok(Expression::Prefix(PrefixExpression {
-            token,
-            right: Box::new(expression),
-        }))
+        Ok(Expression::Prefix(PrefixExpression { token, right }))
     }
 
     fn parse_infix_expression(
@@ -271,12 +269,12 @@ impl Parser {
         let cur_precedence = get_precedence(&cur_token);
 
         parser.next_token();
-        let right = parser.parse_expression(cur_precedence)?;
+        let right = Rc::new(parser.parse_expression(cur_precedence)?);
 
         Ok(Expression::Infix(InfixExpression {
             token: cur_token.unwrap(),
-            left: Box::new(left),
-            right: Box::new(right),
+            left: Rc::new(left),
+            right,
         }))
     }
 
@@ -313,7 +311,7 @@ impl Parser {
         }
 
         parser.next_token();
-        let condition = parser.parse_expression(ExpressionType::Lowest as usize)?;
+        let condition = Rc::new(parser.parse_expression(ExpressionType::Lowest as usize)?);
 
         if !parser.expect_peek(Token::Rparen) {
             return Err(String::from(
@@ -327,7 +325,7 @@ impl Parser {
             ));
         }
 
-        let consequence = parser.parse_block_statement()?;
+        let consequence = Rc::new(parser.parse_block_statement()?);
 
         let mut alternative = None;
 
@@ -344,12 +342,12 @@ impl Parser {
                 ));
             }
 
-            alternative = Some(parser.parse_block_statement()?);
+            alternative = Some(Rc::new(parser.parse_block_statement()?));
         }
 
         Ok(Expression::If(IfExpression {
             token,
-            condition: Box::new(condition),
+            condition,
             consequence,
             alternative,
         }))
@@ -372,7 +370,7 @@ impl Parser {
             ));
         }
 
-        let body = parser.parse_block_statement()?;
+        let body = Rc::new(parser.parse_block_statement()?);
 
         Ok(Expression::FunctionLiteral(FunctionLiteral {
             token,
@@ -439,11 +437,11 @@ impl Parser {
         Ok(Expression::Call(CallExpression {
             token,
             arguments,
-            function: Box::new(function),
+            function: Rc::new(function),
         }))
     }
 
-    fn parse_expression_list(&mut self, end: Token) -> InterpreterResult<Vec<Expression>> {
+    fn parse_expression_list(&mut self, end: Token) -> InterpreterResult<Vec<Rc<Expression>>> {
         let mut arguments = vec![];
 
         if self.peek_token.as_ref().is_some_and(|t| t == &end) {
@@ -452,13 +450,17 @@ impl Parser {
         }
 
         self.next_token();
-        arguments.push(self.parse_expression(ExpressionType::Lowest as usize)?);
+        arguments.push(Rc::new(
+            self.parse_expression(ExpressionType::Lowest as usize)?,
+        ));
 
         while self.peek_token.as_ref().is_some_and(|t| t == &Token::Comma) {
             self.next_token();
             self.next_token();
 
-            arguments.push(self.parse_expression(ExpressionType::Lowest as usize)?);
+            arguments.push(Rc::new(
+                self.parse_expression(ExpressionType::Lowest as usize)?,
+            ));
         }
 
         if !self.expect_peek(end) {
@@ -490,7 +492,7 @@ impl Parser {
         let token = parser.cur_token.clone().unwrap();
 
         parser.next_token();
-        let index = parser.parse_expression(ExpressionType::Lowest as usize)?;
+        let index = Rc::new(parser.parse_expression(ExpressionType::Lowest as usize)?);
 
         if !parser.expect_peek(Token::Rbracket) {
             return Err(String::from(
@@ -500,8 +502,8 @@ impl Parser {
 
         Ok(Expression::IndexExpression(IndexExpression {
             token,
-            left: Box::new(left),
-            index: Box::new(index),
+            left: Rc::new(left),
+            index,
         }))
     }
 
@@ -515,7 +517,7 @@ impl Parser {
             .is_some_and(|t| t != &Token::Rbrace)
         {
             parser.next_token();
-            let key = parser.parse_expression(ExpressionType::Lowest as usize)?;
+            let key = Rc::new(parser.parse_expression(ExpressionType::Lowest as usize)?);
 
             if !parser.expect_peek(Token::Colon) {
                 return Err(String::from(
@@ -524,7 +526,7 @@ impl Parser {
             }
 
             parser.next_token();
-            let value = parser.parse_expression(ExpressionType::Lowest as usize)?;
+            let value = Rc::new(parser.parse_expression(ExpressionType::Lowest as usize)?);
 
             pairs.insert(key, value);
 
@@ -574,6 +576,8 @@ fn get_precedence(token: &Option<Token>) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use super::Parser;
     use crate::{
         lexer::{lexer::Lexer, token::Token},
@@ -635,14 +639,14 @@ mod tests {
 
             assert!(statements.len() == 1);
 
-            let let_statement = match statements.first().unwrap() {
+            let let_statement = match statements.first().unwrap().as_ref() {
                 crate::parser::ast::Statement::Let(let_statement) => let_statement,
                 actual => panic!("let statement expected, but got {actual}"),
             };
 
             assert_eq!(let_statement.name.token, let_ident);
 
-            match (&let_statement.value, expression) {
+            match (&let_statement.value.as_ref(), expression) {
                 (Expression::IntegerLiteral(int), Expression::IntegerLiteral(exp)) => {
                     assert_eq!(int.value, exp.value)
                 }
@@ -692,12 +696,12 @@ mod tests {
 
             assert_eq!(statements.len(), 1);
 
-            let return_statement = match statements.first().unwrap() {
+            let return_statement = match statements.first().unwrap().as_ref() {
                 crate::parser::ast::Statement::Return(return_statement) => return_statement,
                 actual => panic!("return statement expected {actual}"),
             };
 
-            match (&return_statement.return_value, expression) {
+            match (&return_statement.return_value.as_ref(), expression) {
                 (Expression::IntegerLiteral(int), Expression::IntegerLiteral(exp)) => {
                     assert_eq!(int.value, exp.value)
                 }
@@ -714,15 +718,15 @@ mod tests {
 
     #[test]
     fn pretty_print_test() {
-        let program = Program::Statements(vec![Statement::Let(LetStatement {
+        let program = Program::Statements(vec![Rc::new(Statement::Let(LetStatement {
             token: Token::Let,
             name: Identifier {
                 token: Token::Ident(String::from("myVar")),
             },
-            value: Expression::Identifier(Identifier {
+            value: Rc::new(Expression::Identifier(Identifier {
                 token: Token::Ident(String::from("anotherVar")),
-            }),
-        })]);
+            })),
+        }))]);
 
         assert_eq!(program.to_string(), String::from("let myVar = anotherVar;"));
     }
@@ -739,12 +743,12 @@ mod tests {
 
         assert_eq!(statements.len(), 1);
 
-        let expression_statement = match statements.first().unwrap() {
+        let expression_statement = match statements.first().unwrap().as_ref() {
             Statement::Expression(expr) => expr,
             actual => panic!("expression statement expected, but got {actual}"),
         };
 
-        let identifier = match &expression_statement.expression {
+        let identifier = match &expression_statement.expression.as_ref() {
             Expression::Identifier(ident) => ident,
             actual => panic!("identifier expresssion expected, but got {actual}"),
         };
@@ -764,12 +768,12 @@ mod tests {
 
         assert_eq!(statements.len(), 1);
 
-        let expression_statement = match statements.first().unwrap() {
+        let expression_statement = match statements.first().unwrap().as_ref() {
             Statement::Expression(expr) => expr,
             actual => panic!("expression statement expected, but got {actual}"),
         };
 
-        let integer_literal = match &expression_statement.expression {
+        let integer_literal = match &expression_statement.expression.as_ref() {
             Expression::IntegerLiteral(int) => int,
             actual => panic!("integer literal expression expected, but got {actual}"),
         };
@@ -825,19 +829,19 @@ mod tests {
 
             assert_eq!(statements.len(), 1);
 
-            let expression_statement = match statements.first().unwrap() {
+            let expression_statement = match statements.first().unwrap().as_ref() {
                 Statement::Expression(expr) => expr,
                 actual => panic!("expression statement expected, but got {actual}"),
             };
 
-            let prefix_expression = match &expression_statement.expression {
+            let prefix_expression = match &expression_statement.expression.as_ref() {
                 Expression::Prefix(prefix) => prefix,
                 actual => panic!("prefix expression expected, but got {actual}"),
             };
 
             assert_eq!(prefix_expression.token, expected_token);
 
-            match (*prefix_expression.right.clone(), expected_expr) {
+            match (prefix_expression.right.clone().as_ref(), expected_expr) {
                 (Expression::IntegerLiteral(int), Expression::IntegerLiteral(exp)) => {
                     assert_eq!(int.value, exp.value)
                 }
@@ -858,11 +862,11 @@ mod tests {
                 "5 + 5;",
                 Expression::Infix(InfixExpression {
                     token: Token::Plus,
-                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    left: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
-                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    right: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
@@ -872,11 +876,11 @@ mod tests {
                 "5 - 5;",
                 Expression::Infix(InfixExpression {
                     token: Token::Minus,
-                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    left: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
-                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    right: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
@@ -886,11 +890,11 @@ mod tests {
                 "5 * 5;",
                 Expression::Infix(InfixExpression {
                     token: Token::Asterisk,
-                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    left: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
-                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    right: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
@@ -900,11 +904,11 @@ mod tests {
                 "5 / 5;",
                 Expression::Infix(InfixExpression {
                     token: Token::Slash,
-                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    left: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
-                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    right: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
@@ -914,11 +918,11 @@ mod tests {
                 "5 > 5;",
                 Expression::Infix(InfixExpression {
                     token: Token::Gt,
-                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    left: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
-                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    right: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
@@ -928,11 +932,11 @@ mod tests {
                 "5 < 5;",
                 Expression::Infix(InfixExpression {
                     token: Token::Lt,
-                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    left: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
-                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    right: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
@@ -942,11 +946,11 @@ mod tests {
                 "5 == 5;",
                 Expression::Infix(InfixExpression {
                     token: Token::Eq,
-                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    left: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
-                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    right: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
@@ -956,11 +960,11 @@ mod tests {
                 "5 != 5;",
                 Expression::Infix(InfixExpression {
                     token: Token::Ne,
-                    left: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    left: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
-                    right: Box::new(Expression::IntegerLiteral(IntegerLiteral {
+                    right: Rc::new(Expression::IntegerLiteral(IntegerLiteral {
                         token: Token::Int(String::from("5")),
                         value: 5,
                     })),
@@ -970,11 +974,11 @@ mod tests {
                 "true == true",
                 Expression::Infix(InfixExpression {
                     token: Token::Eq,
-                    left: Box::new(Expression::Boolean(Boolean {
+                    left: Rc::new(Expression::Boolean(Boolean {
                         token: Token::True,
                         value: true,
                     })),
-                    right: Box::new(Expression::Boolean(Boolean {
+                    right: Rc::new(Expression::Boolean(Boolean {
                         token: Token::True,
                         value: true,
                     })),
@@ -984,11 +988,11 @@ mod tests {
                 "true != false",
                 Expression::Infix(InfixExpression {
                     token: Token::Ne,
-                    left: Box::new(Expression::Boolean(Boolean {
+                    left: Rc::new(Expression::Boolean(Boolean {
                         token: Token::True,
                         value: true,
                     })),
-                    right: Box::new(Expression::Boolean(Boolean {
+                    right: Rc::new(Expression::Boolean(Boolean {
                         token: Token::False,
                         value: false,
                     })),
@@ -998,11 +1002,11 @@ mod tests {
                 "false == false",
                 Expression::Infix(InfixExpression {
                     token: Token::Eq,
-                    left: Box::new(Expression::Boolean(Boolean {
+                    left: Rc::new(Expression::Boolean(Boolean {
                         token: Token::False,
                         value: false,
                     })),
-                    right: Box::new(Expression::Boolean(Boolean {
+                    right: Rc::new(Expression::Boolean(Boolean {
                         token: Token::False,
                         value: false,
                     })),
@@ -1020,20 +1024,20 @@ mod tests {
 
             assert_eq!(statements.len(), 1);
 
-            let expression_statement = match statements.first().unwrap() {
+            let expression_statement = match statements.first().unwrap().as_ref() {
                 Statement::Expression(expr) => expr,
                 actual => panic!("expression statement expected, but got {actual}"),
             };
 
             let (infix_expression, exp_infix) =
-                match (expression_statement.expression.clone(), expected_expr) {
+                match (expression_statement.expression.as_ref(), expected_expr) {
                     (Expression::Infix(infix), Expression::Infix(exp)) => (infix, exp),
                     (actual, exp) => panic!("infix expression expected, but got {actual} {exp}"),
                 };
 
             assert_eq!(infix_expression.token, exp_infix.token);
 
-            match (*infix_expression.left, *exp_infix.left) {
+            match (infix_expression.left.as_ref(), exp_infix.left.as_ref()) {
                 (Expression::IntegerLiteral(int), Expression::IntegerLiteral(exp)) => {
                     assert_eq!(int.value, exp.value)
                 }
@@ -1044,7 +1048,7 @@ mod tests {
                     panic!("integer literal expression expected, but got {actual} {exp}")
                 }
             };
-            match (*infix_expression.right, *exp_infix.right) {
+            match (infix_expression.right.as_ref(), exp_infix.right.as_ref()) {
                 (Expression::IntegerLiteral(int), Expression::IntegerLiteral(exp)) => {
                     assert_eq!(int.value, exp.value)
                 }
@@ -1131,24 +1135,27 @@ mod tests {
 
             assert_eq!(statements.len(), 1);
 
-            let expression_statement = match statements.first().unwrap() {
+            let expression_statement = match statements.first().unwrap().as_ref() {
                 Statement::Expression(expr) => expr,
                 actual => panic!("expression statement expected, but got {actual}"),
             };
 
-            let if_expression = match expression_statement.expression.clone() {
+            let if_expression = match expression_statement.expression.as_ref() {
                 Expression::If(if_expr) => if_expr,
                 actual => panic!("if expression expected, but got {actual}"),
             };
 
-            let infix_expression = match *if_expression.condition {
+            let infix_expression = match if_expression.condition.as_ref() {
                 Expression::Infix(infix) => infix,
                 actual => panic!("infix expression expected, but got {actual}"),
             };
 
             assert_eq!(infix_expression.token, Token::Lt);
 
-            match (*infix_expression.left, *infix_expression.right) {
+            match (
+                infix_expression.left.as_ref(),
+                infix_expression.right.as_ref(),
+            ) {
                 (Expression::Identifier(ident_left), Expression::Identifier(ident_right)) => {
                     assert_eq!(ident_left.token, Token::Ident(String::from("x")));
                     assert_eq!(ident_right.token, Token::Ident(String::from("y")));
@@ -1158,10 +1165,15 @@ mod tests {
                 }
             }
 
-            assert_eq!(if_expression.consequence.statements.len(), 1);
+            let block_statement = match if_expression.consequence.as_ref() {
+                Statement::Block(block) => block,
+                actual => panic!("block statement expected, bug got {actual}"),
+            };
 
-            match if_expression.consequence.statements.first().unwrap() {
-                Statement::Expression(statement) => match &statement.expression {
+            assert_eq!(block_statement.statements.len(), 1);
+
+            match block_statement.statements.first().unwrap().as_ref() {
+                Statement::Expression(statement) => match &statement.expression.as_ref() {
                     Expression::Identifier(ident) => {
                         assert_eq!(ident.token, Token::Ident(String::from("x")))
                     }
@@ -1171,14 +1183,13 @@ mod tests {
             };
 
             if has_alternative_statement {
-                match if_expression
-                    .alternative
-                    .unwrap()
-                    .statements
-                    .first()
-                    .unwrap()
-                {
-                    Statement::Expression(statement) => match &statement.expression {
+                let block_statement = match if_expression.alternative.as_ref().unwrap().as_ref() {
+                    Statement::Block(block) => block,
+                    actual => panic!("block statement expected, bug got {actual}"),
+                };
+
+                match block_statement.statements.first().unwrap().as_ref() {
+                    Statement::Expression(statement) => match &statement.expression.as_ref() {
                         Expression::Identifier(ident) => {
                             assert_eq!(ident.token, Token::Ident(String::from("y")))
                         }
@@ -1203,8 +1214,8 @@ mod tests {
 
         assert_eq!(statements.len(), 1);
 
-        let function_literal = match statements.first().unwrap() {
-            Statement::Expression(expr) => match &expr.expression {
+        let function_literal = match statements.first().unwrap().as_ref() {
+            Statement::Expression(expr) => match &expr.expression.as_ref() {
                 Expression::FunctionLiteral(func) => func,
                 actual => panic!("function literal expected, but got {actual}"),
             },
@@ -1222,10 +1233,15 @@ mod tests {
             Token::Ident(String::from("y"))
         );
 
-        assert_eq!(function_literal.body.statements.len(), 1);
+        let block_statement = match function_literal.body.as_ref() {
+            Statement::Block(block) => block,
+            actual => panic!("block statement expected, but got {actual}"),
+        };
 
-        let infix_expression = match function_literal.body.statements.first().unwrap() {
-            Statement::Expression(statement) => match &statement.expression {
+        assert_eq!(block_statement.statements.len(), 1);
+
+        let infix_expression = match block_statement.statements.first().unwrap().as_ref() {
+            Statement::Expression(statement) => match &statement.expression.as_ref() {
                 Expression::Infix(infix) => infix,
                 actual => panic!("infix expression expected, but got {actual}"),
             },
@@ -1235,8 +1251,8 @@ mod tests {
         assert_eq!(infix_expression.token, Token::Plus);
 
         match (
-            *infix_expression.left.clone(),
-            *infix_expression.right.clone(),
+            infix_expression.left.as_ref(),
+            infix_expression.right.as_ref(),
         ) {
             (Expression::Identifier(left), Expression::Identifier(right)) => {
                 assert_eq!(left.token, Token::Ident(String::from("x")));
@@ -1273,8 +1289,8 @@ mod tests {
 
             assert_eq!(statements.len(), 1);
 
-            let function_literal = match statements.first().unwrap() {
-                Statement::Expression(expr) => match &expr.expression {
+            let function_literal = match statements.first().unwrap().as_ref() {
+                Statement::Expression(expr) => match &expr.expression.as_ref() {
                     Expression::FunctionLiteral(func) => func,
                     actual => panic!("function literal expected, but got {actual}"),
                 },
@@ -1301,8 +1317,8 @@ mod tests {
         };
         assert_eq!(statements.len(), 1);
 
-        let call_expression = match statements.first().unwrap() {
-            Statement::Expression(expr) => match &expr.expression {
+        let call_expression = match statements.first().unwrap().as_ref() {
+            Statement::Expression(expr) => match &expr.expression.as_ref() {
                 Expression::Call(call) => call,
                 actual => panic!("call expression expected, but got {actual}"),
             },
@@ -1310,19 +1326,24 @@ mod tests {
         };
         assert_eq!(call_expression.arguments.len(), 3);
 
-        let identifier = match *call_expression.function.clone() {
+        let identifier = match call_expression.function.as_ref() {
             Expression::Identifier(ident) => ident,
             actual => panic!("identifier expected, but got {actual}"),
         };
         assert_eq!(identifier.token, Token::Ident(String::from("add")));
 
-        match &call_expression.arguments[..] {
+        match &call_expression
+            .arguments
+            .iter()
+            .map(|arg| arg.as_ref())
+            .collect::<Vec<_>>()[..]
+        {
             [Expression::IntegerLiteral(int), Expression::Infix(first_infix), Expression::Infix(second_infix)] =>
             {
                 assert_eq!(int.value, 1);
                 assert_eq!(first_infix.token, Token::Asterisk);
 
-                match (*first_infix.left.clone(), *first_infix.right.clone()) {
+                match (first_infix.left.as_ref(), first_infix.right.as_ref()) {
                     (Expression::IntegerLiteral(left), Expression::IntegerLiteral(right)) => {
                         assert_eq!(left.value, 2);
                         assert_eq!(right.value, 3);
@@ -1334,7 +1355,7 @@ mod tests {
 
                 assert_eq!(second_infix.token, Token::Plus);
 
-                match (*second_infix.left.clone(), *second_infix.right.clone()) {
+                match (second_infix.left.as_ref(), second_infix.right.as_ref()) {
                     (Expression::IntegerLiteral(left), Expression::IntegerLiteral(right)) => {
                         assert_eq!(left.value, 4);
                         assert_eq!(right.value, 5);
@@ -1362,8 +1383,8 @@ mod tests {
         };
         assert_eq!(statements.len(), 1);
 
-        match statements.first().unwrap() {
-            Statement::Expression(expr) => match &expr.expression {
+        match statements.first().unwrap().as_ref() {
+            Statement::Expression(expr) => match &expr.expression.as_ref() {
                 Expression::StringLiteral(string) => {
                     assert_eq!(string.token.to_string(), "hello world!")
                 }
@@ -1384,21 +1405,21 @@ mod tests {
         };
         assert_eq!(statements.len(), 1);
 
-        match statements.first().unwrap() {
-            Statement::Expression(expr) => match &expr.expression {
+        match statements.first().unwrap().as_ref() {
+            Statement::Expression(expr) => match &expr.expression.as_ref() {
                 Expression::ArrayLiteral(array) => {
                     assert_eq!(array.elements.len(), 3);
 
-                    match array.elements.get(0).unwrap() {
+                    match array.elements.get(0).unwrap().as_ref() {
                         Expression::IntegerLiteral(int) => assert_eq!(int.value, 1),
                         actual => panic!("integer literal expected, but got {actual}"),
                     }
 
-                    match array.elements.get(1).unwrap() {
+                    match array.elements.get(1).unwrap().as_ref() {
                         Expression::Infix(infix) => {
                             assert_eq!(infix.token, Token::Asterisk);
 
-                            match (*infix.left.clone(), *infix.right.clone()) {
+                            match (infix.left.as_ref(), infix.right.as_ref()) {
                                 (
                                     Expression::IntegerLiteral(int_left),
                                     Expression::IntegerLiteral(int_right),
@@ -1412,11 +1433,11 @@ mod tests {
                         actual => panic!("infix expression expected, got {actual}"),
                     }
 
-                    match array.elements.get(2).unwrap() {
+                    match array.elements.get(2).unwrap().as_ref() {
                         Expression::Infix(infix) => {
                             assert_eq!(infix.token, Token::Plus);
 
-                            match (*infix.left.clone(), *infix.right.clone()) {
+                            match (infix.left.as_ref(), infix.right.as_ref()) {
                                 (
                                     Expression::IntegerLiteral(int_left),
                                     Expression::IntegerLiteral(int_right),
@@ -1447,14 +1468,14 @@ mod tests {
         };
         assert_eq!(statements.len(), 1);
 
-        match statements.first().unwrap() {
-            Statement::Expression(expr) => match &expr.expression {
-                Expression::IndexExpression(idx_expr) => match (*idx_expr.left.clone(), *idx_expr.index.clone()) {
+        match statements.first().unwrap().as_ref() {
+            Statement::Expression(expr) => match &expr.expression.as_ref() {
+                Expression::IndexExpression(idx_expr) => match (idx_expr.left.as_ref(), idx_expr.index.as_ref()) {
                     (Expression::Identifier(ident), Expression::Infix(infix)) => {
                         assert_eq!(ident.token.to_string(), "myArray");
                         assert_eq!(infix.token, Token::Plus);
 
-                        match (*infix.left.clone(), *infix.right.clone()) {
+                        match (infix.left.as_ref(), infix.right.as_ref()) {
                             (Expression::IntegerLiteral(int_left), Expression::IntegerLiteral(int_right)) => {
                                 assert_eq!(int_left.value, 1);
                                 assert_eq!(int_right.value, 1);
@@ -1482,13 +1503,13 @@ mod tests {
         };
         assert_eq!(statements.len(), 1);
 
-        match statements.first().unwrap() {
-            Statement::Expression(expr) => match &expr.expression {
+        match statements.first().unwrap().as_ref() {
+            Statement::Expression(expr) => match &expr.expression.as_ref() {
                 Expression::HashLiteral(hash_literal) => {
                     assert_eq!(hash_literal.pairs.len(), 3);
 
                     let mut actual_result = hash_literal.pairs.iter().map(|(key, value)| {
-                        match (key, value) {
+                        match (key.as_ref(), value.as_ref()) {
                             (
                                 Expression::StringLiteral(string),
                                 Expression::IntegerLiteral(int),
@@ -1524,8 +1545,8 @@ mod tests {
         };
         assert_eq!(statements.len(), 1);
 
-        match statements.first().unwrap() {
-            Statement::Expression(expr) => match &expr.expression {
+        match statements.first().unwrap().as_ref() {
+            Statement::Expression(expr) => match &expr.expression.as_ref() {
                 Expression::HashLiteral(hash_literal) => {
                     assert_eq!(hash_literal.pairs.len(), 0);
                 }
@@ -1551,13 +1572,13 @@ mod tests {
         };
         assert_eq!(statements.len(), 1);
 
-        match statements.first().unwrap() {
-            Statement::Expression(expr) => match &expr.expression {
+        match statements.first().unwrap().as_ref() {
+            Statement::Expression(expr) => match &expr.expression.as_ref() {
                 Expression::HashLiteral(hash_literal) => {
                     assert_eq!(hash_literal.pairs.len(), 3);
 
                     let mut actual_result = hash_literal.pairs.iter().map(|(key, value)| {
-                        match (key, value) {
+                        match (key.as_ref(), value.as_ref()) {
                             (
                                 Expression::StringLiteral(string1),
                                 Expression::Infix(infix),

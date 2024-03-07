@@ -1,7 +1,7 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash};
+use std::{collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 use crate::{
-    parser::ast::{BlockStatement, Identifier},
+    parser::ast::{Identifier, Statement},
     result::InterpreterResult,
 };
 
@@ -81,7 +81,7 @@ impl Display for Return {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Function {
     pub parameters: Vec<Identifier>,
-    pub body: BlockStatement,
+    pub body: Rc<Statement>,
     pub env: OuterEnvWrapper,
 }
 

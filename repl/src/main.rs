@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     io::stdout().flush()?;
 
     let env = Environment::new();
-    let env = Rc::new(RefCell::new(env));
+    let env = &Rc::new(RefCell::new(env));
 
     while let Ok(_) = io::stdin().read_line(&mut buffer) {
         let lexer = Lexer::new(buffer.clone());
@@ -37,7 +37,7 @@ fn main() -> Result<()> {
         let program = parser.parse_program();
 
         match program {
-            Ok(p) => match eval(p, Rc::clone(&env)) {
+            Ok(p) => match eval(p, env) {
                 Ok(result) => match result {
                     Object::Function(_) => (),
                     _ => println!("{}\n", result),
