@@ -153,6 +153,14 @@ pub fn read_operands(def: Definition, instruction: Instructions) -> (Vec<i32>, u
     (result, offset)
 }
 
+pub fn read_u16(bytes: &[u8]) -> u16 {
+    match bytes.len() {
+        0 => 0,
+        1 => ((bytes[0] as u16) << BYTE_LENGTH) as u16,
+        _ => ((bytes[0] as u16) << BYTE_LENGTH | bytes[1] as u16) as u16,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
