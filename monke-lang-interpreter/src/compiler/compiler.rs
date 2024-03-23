@@ -3,6 +3,7 @@ use std::{rc::Rc, usize};
 use crate::{
     code::code::{make, Instructions, OpCodeType},
     evaluator::types::{Integer, Object},
+    lexer::token::Token,
     parser::ast::{Expression, Program, Statement},
     result::InterpreterResult,
 };
@@ -60,7 +61,14 @@ impl Compiler {
                 Expression::Prefix(_) => todo!(),
                 Expression::Infix(infix_expression) => {
                     self.compile(Rc::clone(&infix_expression.left).into())?;
-                    self.compile(Rc::clone(&infix_expression.right).into())
+                    self.compile(Rc::clone(&infix_expression.right).into())?;
+
+                    match infix_expression.token {
+                        Token::Plus => self.emit(OpCodeType::Add, vec![]),
+                        _ => todo!(),
+                    };
+
+                    Ok(())
                 }
                 Expression::Boolean(_) => todo!(),
                 Expression::If(_) => todo!(),
@@ -189,7 +197,10 @@ mod test {
             .flatten()
             .collect::<Vec<_>>();
 
-        assert_eq!(instructions, *byte_code.instructions);
+        assert_eq!(
+            Instructions(instructions).to_string(),
+            *byte_code.instructions.to_string()
+        );
     }
 
     #[test]
@@ -200,27 +211,10 @@ mod test {
             expected_instructions: vec![
                 make(OpCodeType::Constant, vec![0]),
                 make(OpCodeType::Constant, vec![1]),
+                make(OpCodeType::Add, vec![]),
             ],
         }];
 
         run_compiler_tests(expected);
-    }
-
-    #[test]
-    fn instructions_string_test() {
-        let instructions = vec![
-            make(OpCodeType::Constant, vec![1]),
-            make(OpCodeType::Constant, vec![2]),
-            make(OpCodeType::Constant, vec![65535]),
-        ];
-
-        let expected = r#"0000 OpConstant 1
-0003 OpConstant 2
-0006 OpConstant 65535
-"#;
-
-        let instructions = Instructions(instructions.into_iter().flatten().collect::<Vec<_>>());
-
-        assert_eq!(instructions.to_string(), expected);
     }
 }

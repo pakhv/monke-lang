@@ -3,7 +3,7 @@ use std::{array::from_fn, usize};
 use crate::{
     code::code::{read_u16, Instructions, OpCodeType},
     compiler::compiler::ByteCode,
-    evaluator::types::{Null, Object},
+    evaluator::types::{Integer, Null, Object},
     result::InterpreterResult,
 };
 
@@ -36,7 +36,6 @@ impl Vm {
         let mut ip = 0;
 
         while ip < self.instructions.len() {
-            println!("{ip}");
             let op: OpCodeType = (*self
                 .instructions
                 .get(ip)
@@ -50,16 +49,34 @@ impl Vm {
                             .get(ip + 1..)
                             .ok_or(format!("couldn't parse byte code"))?,
                     );
-                    ip += 3;
+                    ip += 2;
 
                     self.push(
                         self.constants
                             .get(const_idx as usize)
-                            .ok_or(format!(""))?
+                            .ok_or(format!("couldn't parse byte code"))?
                             .clone(),
                     )?;
                 }
+                OpCodeType::Add => {
+                    let right = self.pop()?;
+                    let left = self.pop()?;
+
+                    match (left, right) {
+                        (Object::Integer(left_int), Object::Integer(right_int)) => {
+                            self.push(Object::Integer(Integer {
+                                value: left_int.value + right_int.value,
+                            }))?
+                        }
+                        (obj1, obj2) => {
+                            Err(format!("couldn't add two objects: got {obj1} and {obj2}"))?
+                        }
+                    }
+                }
+                _ => todo!(),
             }
+
+            ip += 1;
         }
 
         Ok(())
@@ -74,6 +91,18 @@ impl Vm {
         self.sp += 1;
 
         Ok(())
+    }
+
+    fn pop(&mut self) -> InterpreterResult<Object> {
+        self.sp -= 1;
+
+        Ok(self
+            .stack
+            .get(self.sp)
+            .ok_or(String::from(
+                "couldn't pop from the stack, index is out of bounds",
+            ))?
+            .clone())
     }
 }
 
@@ -130,7 +159,6 @@ mod tests {
             }
 
             let byte_code = compiler.byte_code();
-            println!("{byte_code:?}");
             let mut vm = Vm::new(byte_code);
 
             if let Err(err) = vm.run() {
@@ -159,7 +187,7 @@ mod tests {
             TestCase {
                 input: String::from("1 + 2"),
                 // todo: fix later
-                expected: 2,
+                expected: 3,
             },
         ];
 

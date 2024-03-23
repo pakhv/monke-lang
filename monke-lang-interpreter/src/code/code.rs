@@ -46,9 +46,11 @@ impl Display for Instructions {
                 .map_err(|_| Error)?;
             let def = get_definition(&op);
 
-            let (operands, read) = read_operands(def, self.0.get(i + 1..).ok_or(Error)?.into());
+            let (operands, read) =
+                read_operands(def.clone(), self.0.get(i + 1..).ok_or(Error)?.into());
 
             let fmt = match operands.len() {
+                0 => def.name.to_string(),
                 1 => format!("{} {}", op.to_string(), operands[0]),
                 _ => Err(Error)?,
             };
@@ -65,6 +67,7 @@ impl Display for Instructions {
 #[derive(Clone, Debug)]
 pub enum OpCodeType {
     Constant = 1,
+    Add,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -73,6 +76,7 @@ impl TryInto<OpCodeType> for u8 {
     fn try_into(self) -> Result<OpCodeType, Self::Error> {
         match self {
             1 => Ok(OpCodeType::Constant),
+            2 => Ok(OpCodeType::Add),
             n => Err(format!("Error converting \"{n}\" to OpCodeType")),
         }
     }
@@ -82,6 +86,7 @@ impl From<OpCodeType> for u8 {
     fn from(value: OpCodeType) -> Self {
         match value {
             OpCodeType::Constant => 1,
+            OpCodeType::Add => 2,
         }
     }
 }
@@ -90,11 +95,12 @@ impl Display for OpCodeType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OpCodeType::Constant => write!(f, "OpConstant"),
+            OpCodeType::Add => write!(f, "OpAdd"),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Definition {
     pub name: OpCodeType,
     pub operand_widths: Vec<u32>,
@@ -103,6 +109,7 @@ pub struct Definition {
 pub fn get_definition(name: &OpCodeType) -> Definition {
     let operand_widths = match name {
         OpCodeType::Constant => vec![2],
+        OpCodeType::Add => vec![],
     };
 
     Definition {
@@ -144,7 +151,7 @@ pub fn read_operands(def: Definition, instruction: Instructions) -> (Vec<i32>, u
             2 => {
                 result.push((slice[0] as i32) << BYTE_LENGTH | slice[1] as i32);
             }
-            _ => todo!(),
+            _ => (),
         }
 
         offset += width as usize;
@@ -167,11 +174,14 @@ mod tests {
 
     #[test]
     fn make_test() {
-        let expected_result: Vec<(_, Vec<i32>, _)> = vec![(
-            OpCodeType::Constant,
-            vec![65534],
-            vec![OpCodeType::Constant.into(), 255, 254],
-        )];
+        let expected_result: Vec<(_, Vec<i32>, _)> = vec![
+            (
+                OpCodeType::Constant,
+                vec![65534],
+                vec![OpCodeType::Constant.into(), 255, 254],
+            ),
+            (OpCodeType::Add, vec![], vec![OpCodeType::Add.into()]),
+        ];
 
         for (opcode, operands, expected) in expected_result {
             let actual = make(opcode, operands);
@@ -197,5 +207,23 @@ mod tests {
             assert_eq!(n, bytes_read);
             assert_eq!(operands_read, operands);
         }
+    }
+
+    #[test]
+    fn instructions_string_test() {
+        let instructions = vec![
+            make(OpCodeType::Add, vec![]),
+            make(OpCodeType::Constant, vec![2]),
+            make(OpCodeType::Constant, vec![65535]),
+        ];
+
+        let expected = r#"0000 OpAdd
+0001 OpConstant 2
+0004 OpConstant 65535
+"#;
+
+        let instructions = Instructions(instructions.into_iter().flatten().collect::<Vec<_>>());
+
+        assert_eq!(instructions.to_string(), expected);
     }
 }
