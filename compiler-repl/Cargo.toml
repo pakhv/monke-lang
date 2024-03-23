@@ -1,0 +1,7 @@
+[package]
+name = "compiler-repl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+monke_lang_interpreter = { version = "0.1.0", path = "../monke-lang-interpreter" }
