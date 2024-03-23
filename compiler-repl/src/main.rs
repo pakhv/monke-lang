@@ -1,15 +1,7 @@
 use monke_lang_interpreter::{
-    compiler::compiler::Compiler,
-    evaluator::{environment::Environment, evaluator::eval, types::Object},
-    lexer::lexer::Lexer,
-    parser::parser::Parser,
-    vm::vm::Vm,
+    compiler::compiler::Compiler, lexer::lexer::Lexer, parser::parser::Parser, vm::vm::Vm,
 };
-use std::{
-    cell::RefCell,
-    io::{self, Result, Write},
-    rc::Rc,
-};
+use std::io::{self, Result, Write};
 
 const MONKEY_FACE: &str = r#"
              __,__
@@ -29,9 +21,6 @@ fn main() -> Result<()> {
     let mut buffer = String::new();
     io::stdout().write_all(b"Enter your monke code\n>> ")?;
     io::stdout().flush()?;
-
-    let env = Environment::new();
-    let env = &Rc::new(RefCell::new(env));
 
     while let Ok(_) = io::stdin().read_line(&mut buffer) {
         let lexer = Lexer::new(buffer.clone());
