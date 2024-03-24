@@ -47,8 +47,8 @@ fn main() -> Result<()> {
             print_error(err, &mut buffer)?;
         }
 
-        let stack_elem = vm.stack_top();
-        assert!(stack_elem.is_some());
+        let stack_elem = vm.last_popped_stack_elem();
+        assert!(stack_elem.is_ok());
         let stack_elem = stack_elem.unwrap();
 
         println!("{stack_elem}");

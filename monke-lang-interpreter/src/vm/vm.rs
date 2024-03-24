@@ -73,12 +73,25 @@ impl Vm {
                         }
                     }
                 }
+                OpCodeType::Pop => {
+                    self.pop()?;
+                }
             }
 
             ip += 1;
         }
 
         Ok(())
+    }
+
+    pub fn last_popped_stack_elem(&self) -> InterpreterResult<Object> {
+        Ok(self
+            .stack
+            .get(self.sp)
+            .ok_or(String::from(
+                "couldn't pop from the stack, index is out of bounds",
+            ))?
+            .clone())
     }
 
     fn push(&mut self, object: Object) -> InterpreterResult<()> {
@@ -164,11 +177,11 @@ mod tests {
                 panic!("{err}");
             }
 
-            let stack_elem = vm.stack_top();
-            assert!(stack_elem.is_some());
+            let stack_elem = vm.last_popped_stack_elem();
+            assert!(stack_elem.is_ok());
             let stack_elem = stack_elem.unwrap();
 
-            case.expected.test(stack_elem);
+            case.expected.test(&stack_elem);
         }
     }
 

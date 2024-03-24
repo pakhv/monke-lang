@@ -68,6 +68,7 @@ impl Display for Instructions {
 pub enum OpCodeType {
     Constant = 1,
     Add,
+    Pop,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -77,7 +78,13 @@ impl TryInto<OpCodeType> for u8 {
         match self {
             1 => Ok(OpCodeType::Constant),
             2 => Ok(OpCodeType::Add),
-            n => Err(format!("Error converting \"{n}\" to OpCodeType")),
+            3 => Ok(OpCodeType::Pop),
+            n => {
+                let error = format!("Error converting \"{n}\" to OpCodeType");
+
+                println!("{error}");
+                Err(error)
+            }
         }
     }
 }
@@ -87,6 +94,7 @@ impl From<OpCodeType> for u8 {
         match value {
             OpCodeType::Constant => 1,
             OpCodeType::Add => 2,
+            OpCodeType::Pop => 3,
         }
     }
 }
@@ -96,6 +104,7 @@ impl Display for OpCodeType {
         match self {
             OpCodeType::Constant => write!(f, "OpConstant"),
             OpCodeType::Add => write!(f, "OpAdd"),
+            OpCodeType::Pop => write!(f, "OpPop"),
         }
     }
 }
@@ -110,6 +119,7 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
     let operand_widths = match name {
         OpCodeType::Constant => vec![2],
         OpCodeType::Add => vec![],
+        OpCodeType::Pop => vec![],
     };
 
     Definition {

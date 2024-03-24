@@ -41,7 +41,10 @@ impl Compiler {
                 Statement::Let(_) => todo!(),
                 Statement::Return(_) => todo!(),
                 Statement::Expression(expression_statement) => {
-                    self.compile(Rc::clone(&expression_statement.expression).into())
+                    self.compile(Rc::clone(&expression_statement.expression).into())?;
+                    self.emit(OpCodeType::Pop, vec![]);
+
+                    Ok(())
                 }
                 Statement::Block(_) => todo!(),
             },
@@ -114,7 +117,7 @@ mod test {
     use core::panic;
 
     use crate::{
-        code::code::{get_definition, make, read_operands, Definition, Instructions, OpCodeType},
+        code::code::{make, Instructions, OpCodeType},
         compiler::compiler::Compiler,
         evaluator::types::Object,
         lexer::lexer::Lexer,
@@ -205,15 +208,28 @@ mod test {
 
     #[test]
     fn integer_arithmetic_test() {
-        let expected = vec![TestCase {
-            input: String::from("1 + 2"),
-            expected_constants: vec![1, 2],
-            expected_instructions: vec![
-                make(OpCodeType::Constant, vec![0]),
-                make(OpCodeType::Constant, vec![1]),
-                make(OpCodeType::Add, vec![]),
-            ],
-        }];
+        let expected = vec![
+            TestCase {
+                input: String::from("1 + 2"),
+                expected_constants: vec![1, 2],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Add, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("1; 2"),
+                expected_constants: vec![1, 2],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Pop, vec![]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
 
         run_compiler_tests(expected);
     }
