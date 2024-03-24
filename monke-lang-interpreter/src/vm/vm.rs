@@ -58,24 +58,17 @@ impl Vm {
                             .clone(),
                     )?;
                 }
-                OpCodeType::Add => {
-                    let right = self.pop()?;
-                    let left = self.pop()?;
-
-                    match (left, right) {
-                        (Object::Integer(left_int), Object::Integer(right_int)) => {
-                            self.push(Object::Integer(Integer {
-                                value: left_int.value + right_int.value,
-                            }))?
-                        }
-                        (obj1, obj2) => {
-                            Err(format!("couldn't add two objects: got {obj1} and {obj2}"))?
-                        }
-                    }
+                op if op == OpCodeType::Add
+                    || op == OpCodeType::Sub
+                    || op == OpCodeType::Mul
+                    || op == OpCodeType::Div =>
+                {
+                    self.execute_binary_operation(op)?;
                 }
                 OpCodeType::Pop => {
                     self.pop()?;
                 }
+                _ => todo!(),
             }
 
             ip += 1;
@@ -115,6 +108,34 @@ impl Vm {
                 "couldn't pop from the stack, index is out of bounds",
             ))?
             .clone())
+    }
+
+    fn execute_binary_operation(&mut self, op: OpCodeType) -> InterpreterResult<()> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+
+        match (left, right) {
+            (Object::Integer(left_int), Object::Integer(right_int)) => match op {
+                OpCodeType::Add => self.push(Object::Integer(Integer {
+                    value: left_int.value + right_int.value,
+                })),
+                OpCodeType::Sub => self.push(Object::Integer(Integer {
+                    value: left_int.value - right_int.value,
+                })),
+                OpCodeType::Mul => self.push(Object::Integer(Integer {
+                    value: left_int.value * right_int.value,
+                })),
+                OpCodeType::Div => self.push(Object::Integer(Integer {
+                    value: left_int.value / right_int.value,
+                })),
+                t => Err(format!(
+                    "couldn't execute binary operation, wrong operation type - {t}"
+                ))?,
+            },
+            (obj1, obj2) => Err(format!(
+                "couldn't execute binary operation: got {obj1} and {obj2}"
+            ))?,
+        }
     }
 }
 
@@ -200,6 +221,42 @@ mod tests {
                 input: String::from("1 + 2"),
                 // todo: fix later
                 expected: 3,
+            },
+            TestCase {
+                input: String::from("1 - 2"),
+                expected: -1,
+            },
+            TestCase {
+                input: String::from("1 * 2"),
+                expected: 2,
+            },
+            TestCase {
+                input: String::from("4 / 2"),
+                expected: 2,
+            },
+            TestCase {
+                input: String::from("50 / 2 * 2 + 10 - 5"),
+                expected: 55,
+            },
+            TestCase {
+                input: String::from("5 + 5 + 5 + 5 - 10"),
+                expected: 10,
+            },
+            TestCase {
+                input: String::from("2 * 2 * 2 * 2 * 2"),
+                expected: 32,
+            },
+            TestCase {
+                input: String::from("5 * 2 + 10"),
+                expected: 20,
+            },
+            TestCase {
+                input: String::from("5 + 2 * 10"),
+                expected: 25,
+            },
+            TestCase {
+                input: String::from("5 * (2 + 10)"),
+                expected: 60,
             },
         ];
 

@@ -68,6 +68,9 @@ impl Compiler {
 
                     match infix_expression.token {
                         Token::Plus => self.emit(OpCodeType::Add, vec![]),
+                        Token::Minus => self.emit(OpCodeType::Sub, vec![]),
+                        Token::Asterisk => self.emit(OpCodeType::Mul, vec![]),
+                        Token::Slash => self.emit(OpCodeType::Div, vec![]),
                         _ => todo!(),
                     };
 
@@ -226,6 +229,36 @@ mod test {
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Pop, vec![]),
                     make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("1 - 2"),
+                expected_constants: vec![1, 2],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Sub, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("1 * 2"),
+                expected_constants: vec![1, 2],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Mul, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("2 / 1"),
+                expected_constants: vec![2, 1],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Div, vec![]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },

@@ -64,11 +64,14 @@ impl Display for Instructions {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OpCodeType {
     Constant = 1,
     Add,
     Pop,
+    Sub,
+    Mul,
+    Div,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -79,6 +82,9 @@ impl TryInto<OpCodeType> for u8 {
             1 => Ok(OpCodeType::Constant),
             2 => Ok(OpCodeType::Add),
             3 => Ok(OpCodeType::Pop),
+            4 => Ok(OpCodeType::Sub),
+            5 => Ok(OpCodeType::Mul),
+            6 => Ok(OpCodeType::Div),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -95,6 +101,9 @@ impl From<OpCodeType> for u8 {
             OpCodeType::Constant => 1,
             OpCodeType::Add => 2,
             OpCodeType::Pop => 3,
+            OpCodeType::Sub => 4,
+            OpCodeType::Mul => 5,
+            OpCodeType::Div => 6,
         }
     }
 }
@@ -105,6 +114,9 @@ impl Display for OpCodeType {
             OpCodeType::Constant => write!(f, "OpConstant"),
             OpCodeType::Add => write!(f, "OpAdd"),
             OpCodeType::Pop => write!(f, "OpPop"),
+            OpCodeType::Sub => write!(f, "OpSub"),
+            OpCodeType::Mul => write!(f, "OpMul"),
+            OpCodeType::Div => write!(f, "OpDiv"),
         }
     }
 }
@@ -120,6 +132,9 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::Constant => vec![2],
         OpCodeType::Add => vec![],
         OpCodeType::Pop => vec![],
+        OpCodeType::Sub => vec![],
+        OpCodeType::Mul => vec![],
+        OpCodeType::Div => vec![],
     };
 
     Definition {
