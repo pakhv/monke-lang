@@ -74,6 +74,12 @@ impl Vm {
                 OpCodeType::False => {
                     self.push(Object::Boolean(Boolean { value: false }))?;
                 }
+                op if op == OpCodeType::GreaterThan
+                    || op == OpCodeType::Equal
+                    || op == OpCodeType::NotEqual =>
+                {
+                    self.execute_comparison(op)?;
+                }
                 _ => todo!(),
             }
 
@@ -141,6 +147,45 @@ impl Vm {
             (obj1, obj2) => Err(format!(
                 "couldn't execute binary operation: got {obj1} and {obj2}"
             ))?,
+        }
+    }
+
+    fn execute_comparison(&mut self, op: OpCodeType) -> InterpreterResult<()> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+
+        match (left, right) {
+            (Object::Integer(int1), Object::Integer(int2)) => match op {
+                OpCodeType::Equal => self.push(Object::Boolean(Boolean {
+                    value: int1.value == int2.value,
+                })),
+                OpCodeType::NotEqual => self.push(Object::Boolean(Boolean {
+                    value: int1.value != int2.value,
+                })),
+                OpCodeType::GreaterThan => self.push(Object::Boolean(Boolean {
+                    value: int1.value > int2.value,
+                })),
+                op => Err(format!(
+                    "couldn't compare two objects, got wrong operator {op}"
+                )),
+            },
+            (Object::Boolean(bool1), Object::Boolean(bool2)) => match op {
+                OpCodeType::Equal => self.push(Object::Boolean(Boolean {
+                    value: bool1.value == bool2.value,
+                })),
+                OpCodeType::NotEqual => self.push(Object::Boolean(Boolean {
+                    value: bool1.value != bool2.value,
+                })),
+                OpCodeType::GreaterThan => self.push(Object::Boolean(Boolean {
+                    value: bool1.value > bool2.value,
+                })),
+                op => Err(format!(
+                    "couldn't compare two objects, got wrong operator {op}"
+                )),
+            },
+            (actual_left, actual_right) => Err(format!(
+                "couldn't compare two objects, got {actual_left} and {actual_right}"
+            )),
         }
     }
 }
@@ -288,6 +333,74 @@ mod tests {
             TestCase {
                 input: String::from("false"),
                 expected: false,
+            },
+            TestCase {
+                input: String::from("1 < 2"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("1 > 2"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("1 < 1"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("1 > 1"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("1 == 1"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("1 != 1"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("1 == 2"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("1 != 2"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("true == true"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("false == false"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("true == false"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("true != false"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("false != true"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("(1 < 2) == true"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("(1 < 2) == false"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("(1 > 2) == true"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("(1 > 2) == false"),
+                expected: true,
             },
         ];
 

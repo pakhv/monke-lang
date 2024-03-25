@@ -74,6 +74,9 @@ pub enum OpCodeType {
     Div,
     True,
     False,
+    Equal,
+    NotEqual,
+    GreaterThan,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -89,6 +92,9 @@ impl TryInto<OpCodeType> for u8 {
             6 => Ok(OpCodeType::Div),
             7 => Ok(OpCodeType::True),
             8 => Ok(OpCodeType::False),
+            9 => Ok(OpCodeType::Equal),
+            10 => Ok(OpCodeType::NotEqual),
+            11 => Ok(OpCodeType::GreaterThan),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -110,6 +116,9 @@ impl From<OpCodeType> for u8 {
             OpCodeType::Div => 6,
             OpCodeType::True => 7,
             OpCodeType::False => 8,
+            OpCodeType::Equal => 9,
+            OpCodeType::NotEqual => 10,
+            OpCodeType::GreaterThan => 11,
         }
     }
 }
@@ -125,6 +134,9 @@ impl Display for OpCodeType {
             OpCodeType::Div => write!(f, "OpDiv"),
             OpCodeType::True => write!(f, "OpTrue"),
             OpCodeType::False => write!(f, "OpFalse"),
+            OpCodeType::Equal => write!(f, "OpEqual"),
+            OpCodeType::NotEqual => write!(f, "OpNotEqual"),
+            OpCodeType::GreaterThan => write!(f, "OpGreaterThan"),
         }
     }
 }
@@ -145,6 +157,9 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::Div => vec![],
         OpCodeType::True => vec![],
         OpCodeType::False => vec![],
+        OpCodeType::Equal => vec![],
+        OpCodeType::NotEqual => vec![],
+        OpCodeType::GreaterThan => vec![],
     };
 
     Definition {

@@ -63,6 +63,14 @@ impl Compiler {
                 Expression::StringLiteral(_) => todo!(),
                 Expression::Prefix(_) => todo!(),
                 Expression::Infix(infix_expression) => {
+                    if infix_expression.token == Token::Lt {
+                        self.compile(Rc::clone(&infix_expression.right).into())?;
+                        self.compile(Rc::clone(&infix_expression.left).into())?;
+                        self.emit(OpCodeType::GreaterThan, vec![]);
+
+                        return Ok(());
+                    }
+
                     self.compile(Rc::clone(&infix_expression.left).into())?;
                     self.compile(Rc::clone(&infix_expression.right).into())?;
 
@@ -71,6 +79,9 @@ impl Compiler {
                         Token::Minus => self.emit(OpCodeType::Sub, vec![]),
                         Token::Asterisk => self.emit(OpCodeType::Mul, vec![]),
                         Token::Slash => self.emit(OpCodeType::Div, vec![]),
+                        Token::Gt => self.emit(OpCodeType::GreaterThan, vec![]),
+                        Token::Eq => self.emit(OpCodeType::Equal, vec![]),
+                        Token::Ne => self.emit(OpCodeType::NotEqual, vec![]),
                         _ => todo!(),
                     };
 
@@ -292,6 +303,66 @@ mod test {
                 expected_constants: vec![],
                 expected_instructions: vec![
                     make(OpCodeType::False, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("1 > 2"),
+                expected_constants: vec![1, 2],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::GreaterThan, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("1 < 2"),
+                expected_constants: vec![2, 1],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::GreaterThan, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("1 == 2"),
+                expected_constants: vec![1, 2],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Equal, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("1 != 2"),
+                expected_constants: vec![1, 2],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::NotEqual, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("true == false"),
+                expected_constants: vec![],
+                expected_instructions: vec![
+                    make(OpCodeType::True, vec![]),
+                    make(OpCodeType::False, vec![]),
+                    make(OpCodeType::Equal, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("true != false"),
+                expected_constants: vec![],
+                expected_instructions: vec![
+                    make(OpCodeType::True, vec![]),
+                    make(OpCodeType::False, vec![]),
+                    make(OpCodeType::NotEqual, vec![]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
