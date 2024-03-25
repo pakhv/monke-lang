@@ -3,7 +3,7 @@ use std::{array::from_fn, usize};
 use crate::{
     code::code::{read_u16, Instructions, OpCodeType},
     compiler::compiler::ByteCode,
-    evaluator::types::{Integer, Null, Object},
+    evaluator::types::{Boolean, Integer, Null, Object},
     result::InterpreterResult,
 };
 
@@ -67,6 +67,12 @@ impl Vm {
                 }
                 OpCodeType::Pop => {
                     self.pop()?;
+                }
+                OpCodeType::True => {
+                    self.push(Object::Boolean(Boolean { value: true }))?;
+                }
+                OpCodeType::False => {
+                    self.push(Object::Boolean(Boolean { value: false }))?;
                 }
                 _ => todo!(),
             }
@@ -165,6 +171,15 @@ mod tests {
         }
     }
 
+    impl ConstTest for bool {
+        fn test(&self, actual: &Object) {
+            match actual {
+                Object::Boolean(bool) => assert_eq!(bool.value, *self),
+                not_int => panic!("integer expected, got {not_int}"),
+            }
+        }
+    }
+
     trait ConstTest {
         fn test(&self, actual: &Object);
     }
@@ -257,6 +272,22 @@ mod tests {
             TestCase {
                 input: String::from("5 * (2 + 10)"),
                 expected: 60,
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn boolean_expression_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("true"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("false"),
+                expected: false,
             },
         ];
 

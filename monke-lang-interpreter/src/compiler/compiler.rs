@@ -76,7 +76,16 @@ impl Compiler {
 
                     Ok(())
                 }
-                Expression::Boolean(_) => todo!(),
+                Expression::Boolean(boolean_expr) => match boolean_expr.value {
+                    true => {
+                        self.emit(OpCodeType::True, vec![]);
+                        Ok(())
+                    }
+                    false => {
+                        self.emit(OpCodeType::False, vec![]);
+                        Ok(())
+                    }
+                },
                 Expression::If(_) => todo!(),
                 Expression::FunctionLiteral(_) => todo!(),
                 Expression::Call(_) => todo!(),
@@ -259,6 +268,30 @@ mod test {
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
                     make(OpCodeType::Div, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn boolean_expression_test() {
+        let expected: Vec<TestCase<i64>> = vec![
+            TestCase {
+                input: String::from("true"),
+                expected_constants: vec![],
+                expected_instructions: vec![
+                    make(OpCodeType::True, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("false"),
+                expected_constants: vec![],
+                expected_instructions: vec![
+                    make(OpCodeType::False, vec![]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },

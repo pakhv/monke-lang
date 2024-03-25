@@ -72,6 +72,8 @@ pub enum OpCodeType {
     Sub,
     Mul,
     Div,
+    True,
+    False,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -85,6 +87,8 @@ impl TryInto<OpCodeType> for u8 {
             4 => Ok(OpCodeType::Sub),
             5 => Ok(OpCodeType::Mul),
             6 => Ok(OpCodeType::Div),
+            7 => Ok(OpCodeType::True),
+            8 => Ok(OpCodeType::False),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -104,6 +108,8 @@ impl From<OpCodeType> for u8 {
             OpCodeType::Sub => 4,
             OpCodeType::Mul => 5,
             OpCodeType::Div => 6,
+            OpCodeType::True => 7,
+            OpCodeType::False => 8,
         }
     }
 }
@@ -117,6 +123,8 @@ impl Display for OpCodeType {
             OpCodeType::Sub => write!(f, "OpSub"),
             OpCodeType::Mul => write!(f, "OpMul"),
             OpCodeType::Div => write!(f, "OpDiv"),
+            OpCodeType::True => write!(f, "OpTrue"),
+            OpCodeType::False => write!(f, "OpFalse"),
         }
     }
 }
@@ -135,6 +143,8 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::Sub => vec![],
         OpCodeType::Mul => vec![],
         OpCodeType::Div => vec![],
+        OpCodeType::True => vec![],
+        OpCodeType::False => vec![],
     };
 
     Definition {
