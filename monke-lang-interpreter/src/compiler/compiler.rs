@@ -8,10 +8,18 @@ use crate::{
     result::InterpreterResult,
 };
 
+#[derive(Debug, Clone)]
+struct EmittedInstruction {
+    op_code: OpCodeType,
+    position: usize,
+}
+
 #[derive(Debug)]
 pub struct Compiler {
     pub instructions: Instructions,
     pub constants: Vec<Object>,
+    last_instruction: Option<EmittedInstruction>,
+    prev_instruction: Option<EmittedInstruction>,
 }
 
 #[derive(Debug)]
@@ -21,10 +29,14 @@ pub struct ByteCode {
 }
 
 impl Compiler {
+    const KEKL_VALUE: i32 = 9999;
+
     pub fn new() -> Self {
         Compiler {
             constants: vec![],
             instructions: Instructions(vec![]),
+            last_instruction: None,
+            prev_instruction: None,
         }
     }
 
@@ -46,7 +58,13 @@ impl Compiler {
 
                     Ok(())
                 }
-                Statement::Block(_) => todo!(),
+                Statement::Block(block) => {
+                    for statement in &block.statements {
+                        self.compile(Rc::clone(statement).into())?;
+                    }
+
+                    Ok(())
+                }
             },
             Program::Expression(expression) => match expression.as_ref() {
                 Expression::Identifier(_) => todo!(),
@@ -106,7 +124,20 @@ impl Compiler {
                         Ok(())
                     }
                 },
-                Expression::If(_) => todo!(),
+                Expression::If(if_expression) => {
+                    self.compile(Rc::clone(&if_expression.condition).into())?;
+                    let jump_not_truthy_pos =
+                        self.emit(OpCodeType::JumpNotTruthy, vec![Self::KEKL_VALUE]);
+
+                    self.compile(Rc::clone(&if_expression.consequence).into())?;
+
+                    if self.last_instruction_is_pop() {
+                        self.remove_last_pop()?;
+                    }
+
+                    let after_consequence_pos = self.instructions.len() as i32;
+                    self.change_operand(jump_not_truthy_pos, after_consequence_pos)
+                }
                 Expression::FunctionLiteral(_) => todo!(),
                 Expression::Call(_) => todo!(),
                 Expression::ArrayLiteral(_) => todo!(),
@@ -129,8 +160,12 @@ impl Compiler {
     }
 
     fn emit(&mut self, op: OpCodeType, operands: Vec<i32>) -> usize {
-        let instructions = make(op, operands);
-        self.add_instructions(instructions)
+        let instructions = make(op.clone(), operands);
+        let pos = self.add_instructions(instructions);
+
+        self.set_last_instruction(op, pos);
+
+        pos
     }
 
     fn add_instructions(&mut self, instructions: Instructions) -> usize {
@@ -141,6 +176,79 @@ impl Compiler {
         }
 
         new_instruction_position
+    }
+
+    fn set_last_instruction(&mut self, op: OpCodeType, pos: usize) {
+        let prev = self.last_instruction.clone();
+        let last = Some(EmittedInstruction {
+            op_code: op,
+            position: pos,
+        });
+
+        self.prev_instruction = prev;
+        self.last_instruction = last;
+    }
+
+    fn last_instruction_is_pop(&self) -> bool {
+        match &self.last_instruction {
+            Some(instruction) => match instruction.op_code {
+                OpCodeType::Pop => true,
+                _ => false,
+            },
+            None => false,
+        }
+    }
+
+    fn remove_last_pop(&mut self) -> InterpreterResult<()> {
+        match &self.last_instruction {
+            Some(EmittedInstruction {
+                op_code: _,
+                position,
+            }) => {
+                self.instructions = self
+                    .instructions
+                    .0
+                    .get(..*position)
+                    .ok_or(String::from("couldn't compile, failed to remove last pop"))?
+                    .into();
+                self.last_instruction = self.prev_instruction.clone();
+
+                Ok(())
+            }
+            None => Err(String::from("couldn't compile, failed to remove last pop")),
+        }
+    }
+
+    fn replace_instructions(
+        &mut self,
+        pos: usize,
+        new_instructions: Instructions,
+    ) -> InterpreterResult<()> {
+        for idx in 0..new_instructions.len() {
+            match (self.instructions.get(pos + idx), new_instructions.get(idx)) {
+                (Some(_), Some(_)) => {
+                    self.instructions.0[pos + idx] = new_instructions[idx];
+                }
+                _ => Err(String::from(
+                    "couldn't compile, failed to replace intructions",
+                ))?,
+            }
+        }
+
+        Ok(())
+    }
+
+    fn change_operand(&mut self, pos: usize, operand: i32) -> InterpreterResult<()> {
+        if let None = self.instructions.get(pos) {
+            return Err(String::from("couldn't compile, failed change operand"));
+        }
+
+        let op: OpCodeType = self.instructions[pos]
+            .try_into()
+            .map_err(|_| String::from("couldn't compile, failed change operand"))?;
+        let new_instructions = make(op, vec![operand]);
+
+        self.replace_instructions(pos, new_instructions)
     }
 }
 
@@ -394,6 +502,24 @@ mod test {
                 ],
             },
         ];
+
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn conditionals_test() {
+        let expected: Vec<TestCase<i64>> = vec![TestCase {
+            input: String::from("if (true) { 10 }; 3333;"),
+            expected_constants: vec![10, 3333],
+            expected_instructions: vec![
+                make(OpCodeType::True, vec![]),
+                make(OpCodeType::JumpNotTruthy, vec![7]),
+                make(OpCodeType::Constant, vec![0]),
+                make(OpCodeType::Pop, vec![]),
+                make(OpCodeType::Constant, vec![1]),
+                make(OpCodeType::Pop, vec![]),
+            ],
+        }];
 
         run_compiler_tests(expected);
     }

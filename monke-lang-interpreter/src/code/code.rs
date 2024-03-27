@@ -79,6 +79,8 @@ pub enum OpCodeType {
     GreaterThan,
     Minus,
     Bang,
+    JumpNotTruthy,
+    Jump,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -99,6 +101,8 @@ impl TryInto<OpCodeType> for u8 {
             11 => Ok(OpCodeType::GreaterThan),
             12 => Ok(OpCodeType::Minus),
             13 => Ok(OpCodeType::Bang),
+            14 => Ok(OpCodeType::JumpNotTruthy),
+            15 => Ok(OpCodeType::Jump),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -125,6 +129,8 @@ impl From<OpCodeType> for u8 {
             OpCodeType::GreaterThan => 11,
             OpCodeType::Minus => 12,
             OpCodeType::Bang => 13,
+            OpCodeType::JumpNotTruthy => 14,
+            OpCodeType::Jump => 15,
         }
     }
 }
@@ -145,6 +151,8 @@ impl Display for OpCodeType {
             OpCodeType::GreaterThan => write!(f, "OpGreaterThan"),
             OpCodeType::Minus => write!(f, "OpMinus"),
             OpCodeType::Bang => write!(f, "OpBang"),
+            OpCodeType::JumpNotTruthy => write!(f, "OpJumpNotTruthy"),
+            OpCodeType::Jump => write!(f, "OpJump"),
         }
     }
 }
@@ -170,6 +178,8 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::GreaterThan => vec![],
         OpCodeType::Minus => vec![],
         OpCodeType::Bang => vec![],
+        OpCodeType::JumpNotTruthy => vec![2],
+        OpCodeType::Jump => vec![2],
     };
 
     Definition {
