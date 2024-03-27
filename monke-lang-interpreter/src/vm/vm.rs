@@ -80,6 +80,18 @@ impl Vm {
                 {
                     self.execute_comparison(op)?;
                 }
+                OpCodeType::Bang => match self.pop()? {
+                    Object::Boolean(bool) => {
+                        self.push(Object::Boolean(Boolean { value: !bool.value }))?
+                    }
+                    _ => self.push(Object::Boolean(Boolean { value: false }))?,
+                },
+                OpCodeType::Minus => match self.pop()? {
+                    Object::Integer(int) => {
+                        self.push(Object::Integer(Integer { value: -int.value }))?
+                    }
+                    actual => Err(format!("unsupported type for negation, got {actual}"))?,
+                },
                 _ => todo!(),
             }
 
@@ -318,6 +330,22 @@ mod tests {
                 input: String::from("5 * (2 + 10)"),
                 expected: 60,
             },
+            TestCase {
+                input: String::from("-5"),
+                expected: -5,
+            },
+            TestCase {
+                input: String::from("-10"),
+                expected: -10,
+            },
+            TestCase {
+                input: String::from("-50 + 100 + -50"),
+                expected: 0,
+            },
+            TestCase {
+                input: String::from("(5 + 10 * 2 + 15 / 3) * 2 + -10"),
+                expected: 50,
+            },
         ];
 
         run_vm_tests(expected);
@@ -400,6 +428,30 @@ mod tests {
             },
             TestCase {
                 input: String::from("(1 > 2) == false"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("!true"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("!false"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("!5"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("!!true"),
+                expected: true,
+            },
+            TestCase {
+                input: String::from("!!false"),
+                expected: false,
+            },
+            TestCase {
+                input: String::from("!!5"),
                 expected: true,
             },
         ];

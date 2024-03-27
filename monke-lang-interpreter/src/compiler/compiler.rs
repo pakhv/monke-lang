@@ -58,10 +58,19 @@ impl Compiler {
                     self.emit(OpCodeType::Constant, vec![operand as i32]);
 
                     Ok(())
-                    //todo!()
                 }
                 Expression::StringLiteral(_) => todo!(),
-                Expression::Prefix(_) => todo!(),
+                Expression::Prefix(prefix) => {
+                    self.compile(Rc::clone(&prefix.right).into())?;
+
+                    match &prefix.token {
+                        Token::Bang => self.emit(OpCodeType::Bang, vec![]),
+                        Token::Minus => self.emit(OpCodeType::Minus, vec![]),
+                        actual => Err(format!("couldn't compile prefix expression, bang or minus operators expected, but got {actual}"))?,
+                    };
+
+                    Ok(())
+                }
                 Expression::Infix(infix_expression) => {
                     if infix_expression.token == Token::Lt {
                         self.compile(Rc::clone(&infix_expression.right).into())?;
@@ -282,6 +291,15 @@ mod test {
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
+            TestCase {
+                input: String::from("-1"),
+                expected_constants: vec![1],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Minus, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
         ];
 
         run_compiler_tests(expected);
@@ -363,6 +381,15 @@ mod test {
                     make(OpCodeType::True, vec![]),
                     make(OpCodeType::False, vec![]),
                     make(OpCodeType::NotEqual, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("!true"),
+                expected_constants: vec![],
+                expected_instructions: vec![
+                    make(OpCodeType::True, vec![]),
+                    make(OpCodeType::Bang, vec![]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
