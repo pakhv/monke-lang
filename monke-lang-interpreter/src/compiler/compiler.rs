@@ -135,27 +135,26 @@ impl Compiler {
                         self.remove_last_pop()?;
                     }
 
+                    let jump_pos = self.emit(OpCodeType::Jump, vec![Self::KEKL_VALUE]);
+
+                    let after_consequence_pos = self.instructions.len() as i32;
+                    self.change_operand(jump_not_truthy_pos, after_consequence_pos)?;
+
                     match &if_expression.alternative {
                         Some(alternative) => {
-                            let jump_pos = self.emit(OpCodeType::Jump, vec![Self::KEKL_VALUE]);
-
-                            let after_consequence_pos = self.instructions.len() as i32;
-                            self.change_operand(jump_not_truthy_pos, after_consequence_pos)?;
-
                             self.compile(Rc::clone(alternative).into())?;
 
                             if self.last_instruction_is_pop() {
                                 self.remove_last_pop()?;
                             }
-
-                            let after_alternative_pos = self.instructions.len() as i32;
-                            self.change_operand(jump_pos, after_alternative_pos)?;
                         }
                         None => {
-                            let after_consequence_pos = self.instructions.len() as i32;
-                            self.change_operand(jump_not_truthy_pos, after_consequence_pos)?;
+                            self.emit(OpCodeType::Null, vec![]);
                         }
                     }
+
+                    let after_alternative_pos = self.instructions.len() as i32;
+                    self.change_operand(jump_pos, after_alternative_pos)?;
 
                     Ok(())
                 }
@@ -535,8 +534,10 @@ mod test {
                 expected_constants: vec![10, 3333],
                 expected_instructions: vec![
                     make(OpCodeType::True, vec![]),
-                    make(OpCodeType::JumpNotTruthy, vec![7]),
+                    make(OpCodeType::JumpNotTruthy, vec![10]),
                     make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Jump, vec![11]),
+                    make(OpCodeType::Null, vec![]),
                     make(OpCodeType::Pop, vec![]),
                     make(OpCodeType::Constant, vec![1]),
                     make(OpCodeType::Pop, vec![]),

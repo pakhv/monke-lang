@@ -84,6 +84,7 @@ impl Vm {
                     Object::Boolean(bool) => {
                         self.push(Object::Boolean(Boolean { value: !bool.value }))?
                     }
+                    Object::Null(_) => self.push(Object::Boolean(Boolean { value: true }))?,
                     _ => self.push(Object::Boolean(Boolean { value: false }))?,
                 },
                 OpCodeType::Minus => match self.pop()? {
@@ -92,6 +93,30 @@ impl Vm {
                     }
                     actual => Err(format!("unsupported type for negation, got {actual}"))?,
                 },
+                OpCodeType::Jump => {
+                    let pos = read_u16(
+                        self.instructions
+                            .get(ip + 1..)
+                            .ok_or(format!("couldn't parse byte code"))?,
+                    );
+
+                    ip = (pos - 1) as usize;
+                }
+                OpCodeType::JumpNotTruthy => {
+                    let pos = read_u16(
+                        self.instructions
+                            .get(ip + 1..)
+                            .ok_or(format!("couldn't parse byte code"))?,
+                    );
+
+                    ip += 2;
+                    let condition = self.pop()?;
+
+                    if !Self::is_truthy(condition) {
+                        ip = (pos - 1) as usize;
+                    }
+                }
+                OpCodeType::Null => self.push(Object::Null(Null {}))?,
                 _ => todo!(),
             }
 
@@ -200,10 +225,20 @@ impl Vm {
             )),
         }
     }
+
+    fn is_truthy(condition: Object) -> bool {
+        match condition {
+            Object::Boolean(bool) => bool.value,
+            Object::Null(_) => false,
+            _ => true,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use core::panic;
+
     use crate::{
         compiler::compiler::Compiler, evaluator::types::Object, lexer::lexer::Lexer,
         parser::parser::Parser,
@@ -211,40 +246,34 @@ mod tests {
 
     use super::*;
 
-    struct TestCase<T>
-    where
-        T: ConstTest,
-    {
+    struct TestCase {
         input: String,
-        expected: T,
+        expected: TestCaseResult,
     }
 
-    impl ConstTest for i64 {
-        fn test(&self, actual: &Object) {
-            match actual {
-                Object::Integer(int) => assert_eq!(int.value, *self),
-                not_int => panic!("integer expected, got {not_int}"),
+    #[derive(Debug)]
+    enum TestCaseResult {
+        I64(i64),
+        Boolean(bool),
+        Null,
+    }
+
+    impl TestCaseResult {
+        fn test(&self, obj: &Object) {
+            match (self, obj) {
+                (TestCaseResult::I64(expected), Object::Integer(actual_int)) => {
+                    assert_eq!(expected, &actual_int.value)
+                }
+                (TestCaseResult::Boolean(expected), Object::Boolean(actual_bool)) => {
+                    assert_eq!(expected, &actual_bool.value)
+                }
+                (TestCaseResult::Null, Object::Null(_)) => {}
+                (t1, t2) => panic!("can't compare {t1:?} and {t2:?}"),
             }
         }
     }
 
-    impl ConstTest for bool {
-        fn test(&self, actual: &Object) {
-            match actual {
-                Object::Boolean(bool) => assert_eq!(bool.value, *self),
-                not_int => panic!("integer expected, got {not_int}"),
-            }
-        }
-    }
-
-    trait ConstTest {
-        fn test(&self, actual: &Object);
-    }
-
-    fn run_vm_tests<T>(cases: Vec<TestCase<T>>)
-    where
-        T: ConstTest,
-    {
+    fn run_vm_tests(cases: Vec<TestCase>) {
         for case in cases {
             let lexer = Lexer::new(case.input.clone());
             let mut parser = Parser::new(lexer);
@@ -283,68 +312,68 @@ mod tests {
         let expected = vec![
             TestCase {
                 input: String::from("1"),
-                expected: 1,
+                expected: TestCaseResult::I64(1),
             },
             TestCase {
                 input: String::from("2"),
-                expected: 2,
+                expected: TestCaseResult::I64(2),
             },
             TestCase {
                 input: String::from("1 + 2"),
                 // todo: fix later
-                expected: 3,
+                expected: TestCaseResult::I64(3),
             },
             TestCase {
                 input: String::from("1 - 2"),
-                expected: -1,
+                expected: TestCaseResult::I64(-1),
             },
             TestCase {
                 input: String::from("1 * 2"),
-                expected: 2,
+                expected: TestCaseResult::I64(2),
             },
             TestCase {
                 input: String::from("4 / 2"),
-                expected: 2,
+                expected: TestCaseResult::I64(2),
             },
             TestCase {
                 input: String::from("50 / 2 * 2 + 10 - 5"),
-                expected: 55,
+                expected: TestCaseResult::I64(55),
             },
             TestCase {
                 input: String::from("5 + 5 + 5 + 5 - 10"),
-                expected: 10,
+                expected: TestCaseResult::I64(10),
             },
             TestCase {
                 input: String::from("2 * 2 * 2 * 2 * 2"),
-                expected: 32,
+                expected: TestCaseResult::I64(32),
             },
             TestCase {
                 input: String::from("5 * 2 + 10"),
-                expected: 20,
+                expected: TestCaseResult::I64(20),
             },
             TestCase {
                 input: String::from("5 + 2 * 10"),
-                expected: 25,
+                expected: TestCaseResult::I64(25),
             },
             TestCase {
                 input: String::from("5 * (2 + 10)"),
-                expected: 60,
+                expected: TestCaseResult::I64(60),
             },
             TestCase {
                 input: String::from("-5"),
-                expected: -5,
+                expected: TestCaseResult::I64(-5),
             },
             TestCase {
                 input: String::from("-10"),
-                expected: -10,
+                expected: TestCaseResult::I64(-10),
             },
             TestCase {
                 input: String::from("-50 + 100 + -50"),
-                expected: 0,
+                expected: TestCaseResult::I64(0),
             },
             TestCase {
                 input: String::from("(5 + 10 * 2 + 15 / 3) * 2 + -10"),
-                expected: 50,
+                expected: TestCaseResult::I64(50),
             },
         ];
 
@@ -356,103 +385,155 @@ mod tests {
         let expected = vec![
             TestCase {
                 input: String::from("true"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("false"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("1 < 2"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("1 > 2"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("1 < 1"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("1 > 1"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("1 == 1"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("1 != 1"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("1 == 2"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("1 != 2"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("true == true"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("false == false"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("true == false"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("true != false"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("false != true"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("(1 < 2) == true"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("(1 < 2) == false"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("(1 > 2) == true"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("(1 > 2) == false"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("!true"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("!false"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("!5"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("!!true"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
             },
             TestCase {
                 input: String::from("!!false"),
-                expected: false,
+                expected: TestCaseResult::Boolean(false),
             },
             TestCase {
                 input: String::from("!!5"),
-                expected: true,
+                expected: TestCaseResult::Boolean(true),
+            },
+            TestCase {
+                input: String::from("!(if (false) { 5; })"),
+                expected: TestCaseResult::Boolean(true),
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn conditionals_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("if (true) { 10 }"),
+                expected: TestCaseResult::I64(10),
+            },
+            TestCase {
+                input: String::from("if (true) { 10 } else { 20 }"),
+                expected: TestCaseResult::I64(10),
+            },
+            TestCase {
+                input: String::from("if (false) { 10 } else { 20 } "),
+                expected: TestCaseResult::I64(20),
+            },
+            TestCase {
+                input: String::from("if (1) { 10 }"),
+                expected: TestCaseResult::I64(10),
+            },
+            TestCase {
+                input: String::from("if (1 < 2) { 10 }"),
+                expected: TestCaseResult::I64(10),
+            },
+            TestCase {
+                input: String::from("if (1 < 2) { 10 } else { 20 }"),
+                expected: TestCaseResult::I64(10),
+            },
+            TestCase {
+                input: String::from("if (1 > 2) { 10 } else { 20 }"),
+                expected: TestCaseResult::I64(20),
+            },
+            TestCase {
+                input: String::from("if (1 > 2) { 10 }"),
+                expected: TestCaseResult::Null,
+            },
+            TestCase {
+                input: String::from("if (false) { 10 }"),
+                expected: TestCaseResult::Null,
+            },
+            TestCase {
+                input: String::from("if ((if (false) { 10 })) { 10 } else { 20 }"),
+                expected: TestCaseResult::I64(20),
             },
         ];
 
