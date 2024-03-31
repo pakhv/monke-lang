@@ -1,3 +1,6 @@
+# ⚠️ warning
+Adding compiler and vm for monkey lang, so there will be renames
+
 # monke-lang-interpreter
 Monkey programming language interpreter implementation in Rust. Written following the book ["Writing An Interpreter In Go"](https://interpreterbook.com/) by Thorsten Ball (thx to Primeagen for recommendation, *works at Nextflix btw... rust mentioned*).
 
