@@ -286,32 +286,29 @@ mod test {
 
     use super::ByteCode;
 
-    trait ConstTest {
-        fn test(&self, actual: &Object);
+    struct TestCase {
+        input: String,
+        expected_constants: Vec<TestCaseResult>,
+        expected_instructions: Vec<Instructions>,
     }
 
-    impl ConstTest for i64 {
-        fn test(&self, actual: &Object) {
-            match actual {
-                Object::Integer(int) => assert_eq!(int.value, *self),
-                not_int => panic!("integer expected, got {not_int}"),
+    #[derive(Debug)]
+    enum TestCaseResult {
+        I64(i64),
+    }
+
+    impl TestCaseResult {
+        fn test(&self, obj: &Object) {
+            match (self, obj) {
+                (TestCaseResult::I64(expected), Object::Integer(actual_int)) => {
+                    assert_eq!(expected, &actual_int.value)
+                }
+                (t1, t2) => panic!("can't compare {t1:?} and {t2:?}"),
             }
         }
     }
 
-    struct TestCase<T>
-    where
-        T: ConstTest,
-    {
-        input: String,
-        expected_constants: Vec<T>,
-        expected_instructions: Vec<Instructions>,
-    }
-
-    fn run_compiler_tests<T>(cases: Vec<TestCase<T>>)
-    where
-        T: ConstTest,
-    {
+    fn run_compiler_tests(cases: Vec<TestCase>) {
         for case in cases {
             let lexer = Lexer::new(case.input.clone());
             let mut parser = Parser::new(lexer);
@@ -338,10 +335,7 @@ mod test {
         }
     }
 
-    fn test_constants<T>(byte_code: &ByteCode, expected: &TestCase<T>)
-    where
-        T: ConstTest,
-    {
+    fn test_constants(byte_code: &ByteCode, expected: &TestCase) {
         assert_eq!(byte_code.constants.len(), expected.expected_constants.len());
 
         for (idx, constant) in expected.expected_constants.iter().enumerate() {
@@ -349,10 +343,7 @@ mod test {
         }
     }
 
-    fn test_instructions<T>(byte_code: &ByteCode, expected: &TestCase<T>)
-    where
-        T: ConstTest,
-    {
+    fn test_instructions(byte_code: &ByteCode, expected: &TestCase) {
         let instructions = expected
             .expected_instructions
             .clone()
@@ -371,7 +362,7 @@ mod test {
         let expected = vec![
             TestCase {
                 input: String::from("1 + 2"),
-                expected_constants: vec![1, 2],
+                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -381,7 +372,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1; 2"),
-                expected_constants: vec![1, 2],
+                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Pop, vec![]),
@@ -391,7 +382,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 - 2"),
-                expected_constants: vec![1, 2],
+                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -401,7 +392,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 * 2"),
-                expected_constants: vec![1, 2],
+                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -411,7 +402,7 @@ mod test {
             },
             TestCase {
                 input: String::from("2 / 1"),
-                expected_constants: vec![2, 1],
+                expected_constants: vec![TestCaseResult::I64(2), TestCaseResult::I64(1)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -421,7 +412,7 @@ mod test {
             },
             TestCase {
                 input: String::from("-1"),
-                expected_constants: vec![1],
+                expected_constants: vec![TestCaseResult::I64(1)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Minus, vec![]),
@@ -435,7 +426,7 @@ mod test {
 
     #[test]
     fn boolean_expression_test() {
-        let expected: Vec<TestCase<i64>> = vec![
+        let expected = vec![
             TestCase {
                 input: String::from("true"),
                 expected_constants: vec![],
@@ -454,7 +445,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 > 2"),
-                expected_constants: vec![1, 2],
+                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -464,7 +455,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 < 2"),
-                expected_constants: vec![2, 1],
+                expected_constants: vec![TestCaseResult::I64(2), TestCaseResult::I64(1)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -474,7 +465,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 == 2"),
-                expected_constants: vec![1, 2],
+                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -484,7 +475,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 != 2"),
-                expected_constants: vec![1, 2],
+                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -528,10 +519,10 @@ mod test {
 
     #[test]
     fn conditionals_test() {
-        let expected: Vec<TestCase<i64>> = vec![
+        let expected = vec![
             TestCase {
                 input: String::from("if (true) { 10 }; 3333;"),
-                expected_constants: vec![10, 3333],
+                expected_constants: vec![TestCaseResult::I64(10), TestCaseResult::I64(3333)],
                 expected_instructions: vec![
                     make(OpCodeType::True, vec![]),
                     make(OpCodeType::JumpNotTruthy, vec![10]),
@@ -545,7 +536,11 @@ mod test {
             },
             TestCase {
                 input: String::from("if (true) { 10 } else { 20 }; 3333;"),
-                expected_constants: vec![10, 20, 3333],
+                expected_constants: vec![
+                    TestCaseResult::I64(10),
+                    TestCaseResult::I64(20),
+                    TestCaseResult::I64(3333),
+                ],
                 expected_instructions: vec![
                     make(OpCodeType::True, vec![]),
                     make(OpCodeType::JumpNotTruthy, vec![10]),
