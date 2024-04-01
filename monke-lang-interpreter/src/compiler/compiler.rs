@@ -50,7 +50,9 @@ impl Compiler {
                 Ok(())
             }
             Program::Statement(statement) => match statement.as_ref() {
-                Statement::Let(_) => todo!(),
+                Statement::Let(let_statement) => {
+                    self.compile(Rc::clone(&let_statement.value).into())
+                }
                 Statement::Return(_) => todo!(),
                 Statement::Expression(expression_statement) => {
                     self.compile(Rc::clone(&expression_statement.expression).into())?;
@@ -294,13 +296,13 @@ mod test {
 
     #[derive(Debug)]
     enum TestCaseResult {
-        I64(i64),
+        Integer(i64),
     }
 
     impl TestCaseResult {
         fn test(&self, obj: &Object) {
             match (self, obj) {
-                (TestCaseResult::I64(expected), Object::Integer(actual_int)) => {
+                (TestCaseResult::Integer(expected), Object::Integer(actual_int)) => {
                     assert_eq!(expected, &actual_int.value)
                 }
                 (t1, t2) => panic!("can't compare {t1:?} and {t2:?}"),
@@ -362,7 +364,7 @@ mod test {
         let expected = vec![
             TestCase {
                 input: String::from("1 + 2"),
-                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
+                expected_constants: vec![TestCaseResult::Integer(1), TestCaseResult::Integer(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -372,7 +374,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1; 2"),
-                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
+                expected_constants: vec![TestCaseResult::Integer(1), TestCaseResult::Integer(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Pop, vec![]),
@@ -382,7 +384,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 - 2"),
-                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
+                expected_constants: vec![TestCaseResult::Integer(1), TestCaseResult::Integer(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -392,7 +394,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 * 2"),
-                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
+                expected_constants: vec![TestCaseResult::Integer(1), TestCaseResult::Integer(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -402,7 +404,7 @@ mod test {
             },
             TestCase {
                 input: String::from("2 / 1"),
-                expected_constants: vec![TestCaseResult::I64(2), TestCaseResult::I64(1)],
+                expected_constants: vec![TestCaseResult::Integer(2), TestCaseResult::Integer(1)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -412,7 +414,7 @@ mod test {
             },
             TestCase {
                 input: String::from("-1"),
-                expected_constants: vec![TestCaseResult::I64(1)],
+                expected_constants: vec![TestCaseResult::Integer(1)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Minus, vec![]),
@@ -445,7 +447,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 > 2"),
-                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
+                expected_constants: vec![TestCaseResult::Integer(1), TestCaseResult::Integer(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -455,7 +457,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 < 2"),
-                expected_constants: vec![TestCaseResult::I64(2), TestCaseResult::I64(1)],
+                expected_constants: vec![TestCaseResult::Integer(2), TestCaseResult::Integer(1)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -465,7 +467,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 == 2"),
-                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
+                expected_constants: vec![TestCaseResult::Integer(1), TestCaseResult::Integer(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -475,7 +477,7 @@ mod test {
             },
             TestCase {
                 input: String::from("1 != 2"),
-                expected_constants: vec![TestCaseResult::I64(1), TestCaseResult::I64(2)],
+                expected_constants: vec![TestCaseResult::Integer(1), TestCaseResult::Integer(2)],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -522,7 +524,10 @@ mod test {
         let expected = vec![
             TestCase {
                 input: String::from("if (true) { 10 }; 3333;"),
-                expected_constants: vec![TestCaseResult::I64(10), TestCaseResult::I64(3333)],
+                expected_constants: vec![
+                    TestCaseResult::Integer(10),
+                    TestCaseResult::Integer(3333),
+                ],
                 expected_instructions: vec![
                     make(OpCodeType::True, vec![]),
                     make(OpCodeType::JumpNotTruthy, vec![10]),
@@ -537,9 +542,9 @@ mod test {
             TestCase {
                 input: String::from("if (true) { 10 } else { 20 }; 3333;"),
                 expected_constants: vec![
-                    TestCaseResult::I64(10),
-                    TestCaseResult::I64(20),
-                    TestCaseResult::I64(3333),
+                    TestCaseResult::Integer(10),
+                    TestCaseResult::Integer(20),
+                    TestCaseResult::Integer(3333),
                 ],
                 expected_instructions: vec![
                     make(OpCodeType::True, vec![]),
@@ -549,6 +554,62 @@ mod test {
                     make(OpCodeType::Constant, vec![1]),
                     make(OpCodeType::Pop, vec![]),
                     make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn global_let_statement() {
+        let expected = vec![
+            TestCase {
+                input: String::from(
+                    "
+let one = 1;
+let two = 2;
+",
+                ),
+                expected_constants: vec![TestCaseResult::Integer(1), TestCaseResult::Integer(2)],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::SetGlobal, vec![1]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+let one = 1;
+one;
+",
+                ),
+                expected_constants: vec![TestCaseResult::Integer(1)],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::GetGlobal, vec![0]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+let one = 1;
+let two = one;
+two;
+",
+                ),
+                expected_constants: vec![TestCaseResult::Integer(1)],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::GetGlobal, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![1]),
+                    make(OpCodeType::GetGlobal, vec![1]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },

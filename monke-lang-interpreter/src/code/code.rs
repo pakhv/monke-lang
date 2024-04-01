@@ -82,6 +82,8 @@ pub enum OpCodeType {
     JumpNotTruthy,
     Jump,
     Null,
+    GetGlobal,
+    SetGlobal,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -105,6 +107,8 @@ impl TryInto<OpCodeType> for u8 {
             14 => Ok(OpCodeType::JumpNotTruthy),
             15 => Ok(OpCodeType::Jump),
             16 => Ok(OpCodeType::Null),
+            17 => Ok(OpCodeType::GetGlobal),
+            18 => Ok(OpCodeType::SetGlobal),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -134,6 +138,8 @@ impl From<OpCodeType> for u8 {
             OpCodeType::JumpNotTruthy => 14,
             OpCodeType::Jump => 15,
             OpCodeType::Null => 16,
+            OpCodeType::GetGlobal => 17,
+            OpCodeType::SetGlobal => 18,
         }
     }
 }
@@ -157,6 +163,8 @@ impl Display for OpCodeType {
             OpCodeType::JumpNotTruthy => write!(f, "OpJumpNotTruthy"),
             OpCodeType::Jump => write!(f, "OpJump"),
             OpCodeType::Null => write!(f, "OpNull"),
+            OpCodeType::GetGlobal => write!(f, "OpGetGlobal"),
+            OpCodeType::SetGlobal => write!(f, "OpSetGlobal"),
         }
     }
 }
@@ -185,6 +193,8 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::JumpNotTruthy => vec![2],
         OpCodeType::Jump => vec![2],
         OpCodeType::Null => vec![],
+        OpCodeType::GetGlobal => vec![2],
+        OpCodeType::SetGlobal => vec![2],
     };
 
     Definition {
