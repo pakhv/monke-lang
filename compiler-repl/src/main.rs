@@ -1,5 +1,9 @@
 use monke_lang_interpreter::{
-    compiler::compiler::Compiler, lexer::lexer::Lexer, parser::parser::Parser, vm::vm::Vm,
+    compiler::{compiler::Compiler, symbol_table::SymbolTable},
+    evaluator::types::{Null, Object},
+    lexer::lexer::Lexer,
+    parser::parser::Parser,
+    vm::vm::Vm,
 };
 use std::io::{self, Result, Write};
 
@@ -22,6 +26,12 @@ fn main() -> Result<()> {
     io::stdout().write_all(b"Enter your monke code\n>> ")?;
     io::stdout().flush()?;
 
+    const GLOBALS_SIZE: usize = 65536;
+
+    let mut constants = vec![];
+    let mut globals = vec![Object::Null(Null {}); GLOBALS_SIZE];
+    let mut symbols_table = SymbolTable::new();
+
     while let Ok(_) = io::stdin().read_line(&mut buffer) {
         let lexer = Lexer::new(buffer.clone());
         let mut parser = Parser::new(lexer);
@@ -34,24 +44,34 @@ fn main() -> Result<()> {
 
         let program = program.unwrap();
 
-        let mut compiler = Compiler::new();
+        let mut compiler = Compiler::new_with_state(symbols_table.clone(), constants.clone());
 
         if let Err(err) = &compiler.compile(program) {
             print_error(err, &mut buffer)?;
+            continue;
         }
 
+        symbols_table = compiler.symbol_table.clone();
+
         let byte_code = compiler.byte_code();
-        let mut vm = Vm::new(byte_code);
+        constants = byte_code.constants.clone();
+
+        let mut vm = Vm::new_with_global_store(byte_code, globals.clone());
 
         if let Err(err) = &vm.run() {
             print_error(err, &mut buffer)?;
         }
 
+        globals = vm.globals.clone();
         let stack_elem = vm.last_popped_stack_elem();
-        assert!(stack_elem.is_ok());
-        let stack_elem = stack_elem.unwrap();
 
-        println!("{stack_elem}");
+        match stack_elem {
+            Ok(result) => println!("{result}"),
+            Err(err) => {
+                print_error(&err, &mut buffer)?;
+                continue;
+            }
+        }
 
         buffer.clear();
         io::stdout().write_all(b">> ")?;

@@ -1,4 +1,4 @@
-use std::{array::from_fn, usize};
+use std::usize;
 
 use crate::{
     code::code::{read_u16, Instructions, OpCodeType},
@@ -8,14 +8,15 @@ use crate::{
 };
 
 const STACK_SIZE: usize = 2048;
+const GLOBALS_SIZE: usize = 65536;
 
 #[derive(Debug)]
 pub struct Vm {
     constants: Vec<Object>,
     instructions: Instructions,
-
-    stack: [Object; STACK_SIZE],
+    stack: Vec<Object>,
     sp: usize,
+    pub globals: Vec<Object>,
 }
 
 impl Vm {
@@ -23,8 +24,19 @@ impl Vm {
         Vm {
             constants: byte_code.constants,
             instructions: byte_code.instructions,
-            stack: from_fn(|_| Object::Null(Null {})),
+            stack: vec![Object::Null(Null {}); STACK_SIZE],
             sp: 0,
+            globals: vec![Object::Null(Null {}); GLOBALS_SIZE],
+        }
+    }
+
+    pub fn new_with_global_store(byte_code: ByteCode, globals: Vec<Object>) -> Self {
+        Vm {
+            constants: byte_code.constants,
+            instructions: byte_code.instructions,
+            stack: vec![Object::Null(Null {}); STACK_SIZE],
+            sp: 0,
+            globals,
         }
     }
 
@@ -117,6 +129,31 @@ impl Vm {
                     }
                 }
                 OpCodeType::Null => self.push(Object::Null(Null {}))?,
+                OpCodeType::SetGlobal => {
+                    let pos = read_u16(
+                        self.instructions
+                            .get(ip + 1..)
+                            .ok_or(format!("couldn't parse byte code"))?,
+                    );
+                    ip += 2;
+
+                    self.globals[pos as usize] = self.pop()?;
+                }
+                OpCodeType::GetGlobal => {
+                    let pos = read_u16(
+                        self.instructions
+                            .get(ip + 1..)
+                            .ok_or(format!("couldn't parse byte code"))?,
+                    );
+                    ip += 2;
+
+                    self.push(
+                        self.globals
+                            .get(pos as usize)
+                            .ok_or(String::from("couldn't parse byte code"))?
+                            .clone(),
+                    )?;
+                }
                 _ => todo!(),
             }
 
@@ -539,4 +576,24 @@ mod tests {
 
         run_vm_tests(expected);
     }
+    //
+    // #[test]
+    // fn global_let_statement_test() {
+    //     let expected = vec![
+    //         TestCase {
+    //             input: String::from("let one = 1; one"),
+    //             expected: TestCaseResult::I64(1),
+    //         },
+    //         TestCase {
+    //             input: String::from("let one = 1; let two = 2; one + two"),
+    //             expected: TestCaseResult::I64(3),
+    //         },
+    //         TestCase {
+    //             input: String::from("let one = 1; let two = one + one; one + two"),
+    //             expected: TestCaseResult::I64(3),
+    //         },
+    //     ];
+    //
+    //     run_vm_tests(expected);
+    // }
 }

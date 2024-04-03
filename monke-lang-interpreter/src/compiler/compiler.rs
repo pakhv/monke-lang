@@ -8,6 +8,8 @@ use crate::{
     result::InterpreterResult,
 };
 
+use super::symbol_table::SymbolTable;
+
 #[derive(Debug, Clone)]
 struct EmittedInstruction {
     op_code: OpCodeType,
@@ -20,6 +22,7 @@ pub struct Compiler {
     pub constants: Vec<Object>,
     last_instruction: Option<EmittedInstruction>,
     prev_instruction: Option<EmittedInstruction>,
+    pub symbol_table: SymbolTable,
 }
 
 #[derive(Debug)]
@@ -37,6 +40,17 @@ impl Compiler {
             instructions: Instructions(vec![]),
             last_instruction: None,
             prev_instruction: None,
+            symbol_table: SymbolTable::new(),
+        }
+    }
+
+    pub fn new_with_state(symbol_table: SymbolTable, constants: Vec<Object>) -> Self {
+        Compiler {
+            constants,
+            instructions: Instructions(vec![]),
+            last_instruction: None,
+            prev_instruction: None,
+            symbol_table,
         }
     }
 
@@ -51,7 +65,12 @@ impl Compiler {
             }
             Program::Statement(statement) => match statement.as_ref() {
                 Statement::Let(let_statement) => {
-                    self.compile(Rc::clone(&let_statement.value).into())
+                    self.compile(Rc::clone(&let_statement.value).into())?;
+
+                    let symbol = self.symbol_table.define(let_statement.name.to_string());
+                    self.emit(OpCodeType::SetGlobal, vec![symbol.index as i32]);
+
+                    Ok(())
                 }
                 Statement::Return(_) => todo!(),
                 Statement::Expression(expression_statement) => {
@@ -69,7 +88,16 @@ impl Compiler {
                 }
             },
             Program::Expression(expression) => match expression.as_ref() {
-                Expression::Identifier(_) => todo!(),
+                Expression::Identifier(ident) => {
+                    let value = self
+                        .symbol_table
+                        .resolve(&ident.to_string())
+                        .ok_or(format!("couldn't resolve identifier value: \"{ident}\""))?;
+
+                    self.emit(OpCodeType::GetGlobal, vec![value.index as i32]);
+
+                    Ok(())
+                }
                 Expression::IntegerLiteral(int_expression) => {
                     let int = Object::Integer(Integer {
                         value: int_expression.value,

@@ -7,15 +7,15 @@ pub enum SymbolScope {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Symbol {
-    name: String,
-    scope: SymbolScope,
-    index: usize,
+    pub name: String,
+    pub scope: SymbolScope,
+    pub index: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolTable {
-    store: HashMap<String, Symbol>,
-    num_definitions: usize,
+    pub store: HashMap<String, Symbol>,
+    pub num_definitions: usize,
 }
 
 impl SymbolTable {
@@ -26,7 +26,7 @@ impl SymbolTable {
         }
     }
 
-    fn define(&mut self, name: String) -> Symbol {
+    pub fn define(&mut self, name: String) -> Symbol {
         let symbol = Symbol {
             name: name.clone(),
             index: self.num_definitions,
@@ -39,7 +39,7 @@ impl SymbolTable {
         symbol
     }
 
-    fn resolve(&self, name: &str) -> Option<&Symbol> {
+    pub fn resolve(&self, name: &str) -> Option<&Symbol> {
         self.store.get(name)
     }
 }
