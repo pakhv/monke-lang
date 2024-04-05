@@ -2,7 +2,7 @@ use std::{rc::Rc, usize};
 
 use crate::{
     code::code::{make, Instructions, OpCodeType},
-    evaluator::types::{Integer, Object},
+    evaluator::types::{Integer, Object, Str},
     lexer::token::Token,
     parser::ast::{Expression, Program, Statement},
     result::InterpreterResult,
@@ -107,7 +107,15 @@ impl Compiler {
 
                     Ok(())
                 }
-                Expression::StringLiteral(_) => todo!(),
+                Expression::StringLiteral(string) => {
+                    let str = Object::String(Str {
+                        value: string.to_string(),
+                    });
+                    let operand = self.add_constant(str);
+                    self.emit(OpCodeType::Constant, vec![operand as i32]);
+
+                    Ok(())
+                }
                 Expression::Prefix(prefix) => {
                     self.compile(Rc::clone(&prefix.right).into())?;
 
@@ -190,7 +198,15 @@ impl Compiler {
                 }
                 Expression::FunctionLiteral(_) => todo!(),
                 Expression::Call(_) => todo!(),
-                Expression::ArrayLiteral(_) => todo!(),
+                Expression::ArrayLiteral(array) => {
+                    for el in &array.elements {
+                        self.compile(Rc::clone(el).into())?;
+                    }
+
+                    self.emit(OpCodeType::Array, vec![array.elements.len() as i32]);
+
+                    Ok(())
+                }
                 Expression::IndexExpression(_) => todo!(),
                 Expression::HashLiteral(_) => todo!(),
             },
@@ -325,6 +341,7 @@ mod test {
     #[derive(Debug)]
     enum TestCaseResult {
         Integer(i64),
+        String(String),
     }
 
     impl TestCaseResult {
@@ -332,6 +349,9 @@ mod test {
             match (self, obj) {
                 (TestCaseResult::Integer(expected), Object::Integer(actual_int)) => {
                     assert_eq!(expected, &actual_int.value)
+                }
+                (TestCaseResult::String(expected), Object::String(actual_str)) => {
+                    assert_eq!(expected, &actual_str.value)
                 }
                 (t1, t2) => panic!("can't compare {t1:?} and {t2:?}"),
             }
@@ -638,6 +658,90 @@ two;
                     make(OpCodeType::GetGlobal, vec![0]),
                     make(OpCodeType::SetGlobal, vec![1]),
                     make(OpCodeType::GetGlobal, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn string_expression_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from(r#""monkey""#),
+                expected_constants: vec![TestCaseResult::String(String::from("monkey"))],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(r#""mon" + "key""#),
+                expected_constants: vec![
+                    TestCaseResult::String(String::from("mon")),
+                    TestCaseResult::String(String::from("key")),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Add, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn array_literal_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("[]"),
+                expected_constants: vec![],
+                expected_instructions: vec![
+                    make(OpCodeType::Array, vec![0]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("[1, 2, 3]"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::Integer(2),
+                    TestCaseResult::Integer(3),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Array, vec![3]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("[1 + 2, 3 - 4, 5 * 6]"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::Integer(2),
+                    TestCaseResult::Integer(3),
+                    TestCaseResult::Integer(4),
+                    TestCaseResult::Integer(5),
+                    TestCaseResult::Integer(6),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Add, vec![]),
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Constant, vec![3]),
+                    make(OpCodeType::Sub, vec![]),
+                    make(OpCodeType::Constant, vec![4]),
+                    make(OpCodeType::Constant, vec![5]),
+                    make(OpCodeType::Mul, vec![]),
+                    make(OpCodeType::Array, vec![3]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },

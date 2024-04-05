@@ -3,7 +3,7 @@ use std::usize;
 use crate::{
     code::code::{read_u16, Instructions, OpCodeType},
     compiler::compiler::ByteCode,
-    evaluator::types::{Boolean, Integer, Null, Object},
+    evaluator::types::{Array, Boolean, Integer, Null, Object, Str},
     result::InterpreterResult,
 };
 
@@ -154,6 +154,17 @@ impl Vm {
                             .clone(),
                     )?;
                 }
+                OpCodeType::Array => {
+                    let array_len = read_u16(
+                        self.instructions
+                            .get(ip + 1..)
+                            .ok_or(format!("couldn't parse byte code"))?,
+                    );
+                    ip += 2;
+
+                    let array = self.build_array(self.sp - array_len as usize, self.sp)?;
+                    self.push(array)?;
+                }
                 _ => todo!(),
             }
 
@@ -218,8 +229,16 @@ impl Vm {
                     "couldn't execute binary operation, wrong operation type - {t}"
                 ))?,
             },
+            (Object::String(left_str), Object::String(right_str)) => match op {
+                OpCodeType::Add => self.push(Object::String(Str {
+                    value: left_str.value + &right_str.value,
+                })),
+                t => Err(format!(
+                    "couldn't execute binary operation, wrong operation type - {t}"
+                ))?,
+            },
             (obj1, obj2) => Err(format!(
-                "couldn't execute binary operation: got {obj1} and {obj2}"
+                "couldn't execute binary operation: got \"{obj1}\" and \"{obj2}\""
             ))?,
         }
     }
@@ -270,6 +289,16 @@ impl Vm {
             _ => true,
         }
     }
+
+    fn build_array(&self, start_idx: usize, end_idx: usize) -> InterpreterResult<Object> {
+        let elements = Vec::from(
+            self.stack
+                .get(start_idx..end_idx)
+                .ok_or(String::from("couldn't build an array"))?,
+        );
+
+        Ok(Object::Array(Array { elements }))
+    }
 }
 
 #[cfg(test)]
@@ -290,19 +319,31 @@ mod tests {
 
     #[derive(Debug)]
     enum TestCaseResult {
-        I64(i64),
+        Integer(i64),
         Boolean(bool),
+        String(String),
+        Array(Vec<TestCaseResult>),
         Null,
     }
 
     impl TestCaseResult {
         fn test(&self, obj: &Object) {
             match (self, obj) {
-                (TestCaseResult::I64(expected), Object::Integer(actual_int)) => {
+                (TestCaseResult::Integer(expected), Object::Integer(actual_int)) => {
                     assert_eq!(expected, &actual_int.value)
                 }
                 (TestCaseResult::Boolean(expected), Object::Boolean(actual_bool)) => {
                     assert_eq!(expected, &actual_bool.value)
+                }
+                (TestCaseResult::String(expected), Object::String(actual_string)) => {
+                    assert_eq!(expected, &actual_string.value)
+                }
+                (TestCaseResult::Array(expected), Object::Array(actual_array)) => {
+                    assert_eq!(expected.len(), actual_array.elements.len());
+
+                    for (idx, el) in actual_array.elements.iter().enumerate() {
+                        expected[idx].test(el);
+                    }
                 }
                 (TestCaseResult::Null, Object::Null(_)) => {}
                 (t1, t2) => panic!("can't compare {t1:?} and {t2:?}"),
@@ -349,68 +390,68 @@ mod tests {
         let expected = vec![
             TestCase {
                 input: String::from("1"),
-                expected: TestCaseResult::I64(1),
+                expected: TestCaseResult::Integer(1),
             },
             TestCase {
                 input: String::from("2"),
-                expected: TestCaseResult::I64(2),
+                expected: TestCaseResult::Integer(2),
             },
             TestCase {
                 input: String::from("1 + 2"),
                 // todo: fix later
-                expected: TestCaseResult::I64(3),
+                expected: TestCaseResult::Integer(3),
             },
             TestCase {
                 input: String::from("1 - 2"),
-                expected: TestCaseResult::I64(-1),
+                expected: TestCaseResult::Integer(-1),
             },
             TestCase {
                 input: String::from("1 * 2"),
-                expected: TestCaseResult::I64(2),
+                expected: TestCaseResult::Integer(2),
             },
             TestCase {
                 input: String::from("4 / 2"),
-                expected: TestCaseResult::I64(2),
+                expected: TestCaseResult::Integer(2),
             },
             TestCase {
                 input: String::from("50 / 2 * 2 + 10 - 5"),
-                expected: TestCaseResult::I64(55),
+                expected: TestCaseResult::Integer(55),
             },
             TestCase {
                 input: String::from("5 + 5 + 5 + 5 - 10"),
-                expected: TestCaseResult::I64(10),
+                expected: TestCaseResult::Integer(10),
             },
             TestCase {
                 input: String::from("2 * 2 * 2 * 2 * 2"),
-                expected: TestCaseResult::I64(32),
+                expected: TestCaseResult::Integer(32),
             },
             TestCase {
                 input: String::from("5 * 2 + 10"),
-                expected: TestCaseResult::I64(20),
+                expected: TestCaseResult::Integer(20),
             },
             TestCase {
                 input: String::from("5 + 2 * 10"),
-                expected: TestCaseResult::I64(25),
+                expected: TestCaseResult::Integer(25),
             },
             TestCase {
                 input: String::from("5 * (2 + 10)"),
-                expected: TestCaseResult::I64(60),
+                expected: TestCaseResult::Integer(60),
             },
             TestCase {
                 input: String::from("-5"),
-                expected: TestCaseResult::I64(-5),
+                expected: TestCaseResult::Integer(-5),
             },
             TestCase {
                 input: String::from("-10"),
-                expected: TestCaseResult::I64(-10),
+                expected: TestCaseResult::Integer(-10),
             },
             TestCase {
                 input: String::from("-50 + 100 + -50"),
-                expected: TestCaseResult::I64(0),
+                expected: TestCaseResult::Integer(0),
             },
             TestCase {
                 input: String::from("(5 + 10 * 2 + 15 / 3) * 2 + -10"),
-                expected: TestCaseResult::I64(50),
+                expected: TestCaseResult::Integer(50),
             },
         ];
 
@@ -534,31 +575,31 @@ mod tests {
         let expected = vec![
             TestCase {
                 input: String::from("if (true) { 10 }"),
-                expected: TestCaseResult::I64(10),
+                expected: TestCaseResult::Integer(10),
             },
             TestCase {
                 input: String::from("if (true) { 10 } else { 20 }"),
-                expected: TestCaseResult::I64(10),
+                expected: TestCaseResult::Integer(10),
             },
             TestCase {
                 input: String::from("if (false) { 10 } else { 20 } "),
-                expected: TestCaseResult::I64(20),
+                expected: TestCaseResult::Integer(20),
             },
             TestCase {
                 input: String::from("if (1) { 10 }"),
-                expected: TestCaseResult::I64(10),
+                expected: TestCaseResult::Integer(10),
             },
             TestCase {
                 input: String::from("if (1 < 2) { 10 }"),
-                expected: TestCaseResult::I64(10),
+                expected: TestCaseResult::Integer(10),
             },
             TestCase {
                 input: String::from("if (1 < 2) { 10 } else { 20 }"),
-                expected: TestCaseResult::I64(10),
+                expected: TestCaseResult::Integer(10),
             },
             TestCase {
                 input: String::from("if (1 > 2) { 10 } else { 20 }"),
-                expected: TestCaseResult::I64(20),
+                expected: TestCaseResult::Integer(20),
             },
             TestCase {
                 input: String::from("if (1 > 2) { 10 }"),
@@ -570,30 +611,78 @@ mod tests {
             },
             TestCase {
                 input: String::from("if ((if (false) { 10 })) { 10 } else { 20 }"),
-                expected: TestCaseResult::I64(20),
+                expected: TestCaseResult::Integer(20),
             },
         ];
 
         run_vm_tests(expected);
     }
-    //
-    // #[test]
-    // fn global_let_statement_test() {
-    //     let expected = vec![
-    //         TestCase {
-    //             input: String::from("let one = 1; one"),
-    //             expected: TestCaseResult::I64(1),
-    //         },
-    //         TestCase {
-    //             input: String::from("let one = 1; let two = 2; one + two"),
-    //             expected: TestCaseResult::I64(3),
-    //         },
-    //         TestCase {
-    //             input: String::from("let one = 1; let two = one + one; one + two"),
-    //             expected: TestCaseResult::I64(3),
-    //         },
-    //     ];
-    //
-    //     run_vm_tests(expected);
-    // }
+
+    #[test]
+    fn global_let_statement_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("let one = 1; one"),
+                expected: TestCaseResult::Integer(1),
+            },
+            TestCase {
+                input: String::from("let one = 1; let two = 2; one + two"),
+                expected: TestCaseResult::Integer(3),
+            },
+            TestCase {
+                input: String::from("let one = 1; let two = one + one; one + two"),
+                expected: TestCaseResult::Integer(3),
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn string_expression_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from(r#""monkey""#),
+                expected: TestCaseResult::String(String::from("monkey")),
+            },
+            TestCase {
+                input: String::from(r#""mon" + "key""#),
+                expected: TestCaseResult::String(String::from("monkey")),
+            },
+            TestCase {
+                input: String::from(r#""mon" + "key" + "banana""#),
+                expected: TestCaseResult::String(String::from("monkeybanana")),
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn array_literl_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("[]"),
+                expected: TestCaseResult::Array(vec![]),
+            },
+            TestCase {
+                input: String::from("[1, 2, 3]"),
+                expected: TestCaseResult::Array(vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::Integer(2),
+                    TestCaseResult::Integer(3),
+                ]),
+            },
+            TestCase {
+                input: String::from("[1 + 2, 3 * 4, 5 + 6]"),
+                expected: TestCaseResult::Array(vec![
+                    TestCaseResult::Integer(3),
+                    TestCaseResult::Integer(12),
+                    TestCaseResult::Integer(11),
+                ]),
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
 }
