@@ -208,7 +208,29 @@ impl Compiler {
                     Ok(())
                 }
                 Expression::IndexExpression(_) => todo!(),
-                Expression::HashLiteral(_) => todo!(),
+                Expression::HashLiteral(hash_literal) => {
+                    let mut keys: Vec<_> = hash_literal.pairs.keys().collect();
+                    keys.sort_unstable_by(|&a, &b| {
+                        a.as_ref().to_string().cmp(&b.as_ref().to_string())
+                    });
+
+                    for key in keys {
+                        self.compile(Rc::clone(&key).into())?;
+
+                        let value = hash_literal
+                            .pairs
+                            .get(key)
+                            .ok_or(String::from("couldn't compile hash literal"))?;
+                        self.compile(Rc::clone(value).into())?;
+                    }
+
+                    self.emit(
+                        OpCodeType::Hash,
+                        vec![(hash_literal.pairs.len() * 2) as i32],
+                    );
+
+                    Ok(())
+                }
             },
         }
     }
@@ -742,6 +764,66 @@ two;
                     make(OpCodeType::Constant, vec![5]),
                     make(OpCodeType::Mul, vec![]),
                     make(OpCodeType::Array, vec![3]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn hash_literal_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("{}"),
+                expected_constants: vec![],
+                expected_instructions: vec![
+                    make(OpCodeType::Hash, vec![0]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("{1: 2, 3: 4, 5: 6}"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::Integer(2),
+                    TestCaseResult::Integer(3),
+                    TestCaseResult::Integer(4),
+                    TestCaseResult::Integer(5),
+                    TestCaseResult::Integer(6),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Constant, vec![3]),
+                    make(OpCodeType::Constant, vec![4]),
+                    make(OpCodeType::Constant, vec![5]),
+                    make(OpCodeType::Hash, vec![6]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("{ 1: 2 + 3, 4: 5 * 6 }"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::Integer(2),
+                    TestCaseResult::Integer(3),
+                    TestCaseResult::Integer(4),
+                    TestCaseResult::Integer(5),
+                    TestCaseResult::Integer(6),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Add, vec![]),
+                    make(OpCodeType::Constant, vec![3]),
+                    make(OpCodeType::Constant, vec![4]),
+                    make(OpCodeType::Constant, vec![5]),
+                    make(OpCodeType::Mul, vec![]),
+                    make(OpCodeType::Hash, vec![4]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },

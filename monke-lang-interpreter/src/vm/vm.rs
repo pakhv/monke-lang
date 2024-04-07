@@ -1,9 +1,9 @@
-use std::usize;
+use std::{collections::HashMap, usize};
 
 use crate::{
     code::code::{read_u16, Instructions, OpCodeType},
     compiler::compiler::ByteCode,
-    evaluator::types::{Array, Boolean, Integer, Null, Object, Str},
+    evaluator::types::{Array, Boolean, HashTable, Integer, Null, Object, Str},
     result::InterpreterResult,
 };
 
@@ -165,6 +165,17 @@ impl Vm {
                     let array = self.build_array(self.sp - array_len as usize, self.sp)?;
                     self.push(array)?;
                 }
+                OpCodeType::Hash => {
+                    let hash_len = read_u16(
+                        self.instructions
+                            .get(ip + 1..)
+                            .ok_or(format!("couldn't parse byte code"))?,
+                    );
+                    ip += 2;
+
+                    let hash = self.build_hash(hash_len as usize)?;
+                    self.push(hash)?;
+                }
                 _ => todo!(),
             }
 
@@ -299,11 +310,34 @@ impl Vm {
 
         Ok(Object::Array(Array { elements }))
     }
+
+    fn build_hash(&self, hash_len: usize) -> InterpreterResult<Object> {
+        let start_idx = self.sp - hash_len;
+        let pair_count = hash_len / 2;
+
+        let mut pairs = HashMap::new();
+
+        for idx in 0..pair_count {
+            let key = self
+                .stack
+                .get(start_idx + 2 * idx)
+                .ok_or(String::from("couldn't build a hash"))?;
+            let value = self
+                .stack
+                .get(start_idx + 2 * idx + 1)
+                .ok_or(String::from("couldn't build a hash"))?;
+
+            pairs.insert(key.clone(), value.clone());
+        }
+
+        Ok(Object::HashTable(HashTable { pairs }))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use core::panic;
+    use std::collections::HashMap;
 
     use crate::{
         compiler::compiler::Compiler, evaluator::types::Object, lexer::lexer::Lexer,
@@ -323,6 +357,7 @@ mod tests {
         Boolean(bool),
         String(String),
         Array(Vec<TestCaseResult>),
+        Hash(HashMap<Object, TestCaseResult>),
         Null,
     }
 
@@ -343,6 +378,17 @@ mod tests {
 
                     for (idx, el) in actual_array.elements.iter().enumerate() {
                         expected[idx].test(el);
+                    }
+                }
+                (TestCaseResult::Hash(expected), Object::HashTable(actual_hash)) => {
+                    assert_eq!(expected.len(), actual_hash.pairs.len());
+
+                    for (exp_key, exp_value) in expected {
+                        let actual_value = actual_hash.pairs.get(exp_key);
+                        assert!(actual_value.is_some());
+
+                        let actual_value = actual_value.unwrap();
+                        exp_value.test(actual_value);
                     }
                 }
                 (TestCaseResult::Null, Object::Null(_)) => {}
@@ -680,6 +726,44 @@ mod tests {
                     TestCaseResult::Integer(12),
                     TestCaseResult::Integer(11),
                 ]),
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn hash_literal_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("{}"),
+                expected: TestCaseResult::Hash(HashMap::new()),
+            },
+            TestCase {
+                input: String::from("{ 1: 2, 2: 3 }"),
+                expected: TestCaseResult::Hash(HashMap::from([
+                    (
+                        Object::Integer(Integer { value: 1 }),
+                        TestCaseResult::Integer(2),
+                    ),
+                    (
+                        Object::Integer(Integer { value: 2 }),
+                        TestCaseResult::Integer(3),
+                    ),
+                ])),
+            },
+            TestCase {
+                input: String::from("{1 + 1: 2 * 2, 3 + 3: 4 * 4}"),
+                expected: TestCaseResult::Hash(HashMap::from([
+                    (
+                        Object::Integer(Integer { value: 2 }),
+                        TestCaseResult::Integer(4),
+                    ),
+                    (
+                        Object::Integer(Integer { value: 6 }),
+                        TestCaseResult::Integer(16),
+                    ),
+                ])),
             },
         ];
 

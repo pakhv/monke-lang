@@ -85,6 +85,7 @@ pub enum OpCodeType {
     GetGlobal,
     SetGlobal,
     Array,
+    Hash,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -111,6 +112,7 @@ impl TryInto<OpCodeType> for u8 {
             17 => Ok(OpCodeType::GetGlobal),
             18 => Ok(OpCodeType::SetGlobal),
             19 => Ok(OpCodeType::Array),
+            20 => Ok(OpCodeType::Hash),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -143,6 +145,7 @@ impl From<OpCodeType> for u8 {
             OpCodeType::GetGlobal => 17,
             OpCodeType::SetGlobal => 18,
             OpCodeType::Array => 19,
+            OpCodeType::Hash => 20,
         }
     }
 }
@@ -169,6 +172,7 @@ impl Display for OpCodeType {
             OpCodeType::GetGlobal => write!(f, "OpGetGlobal"),
             OpCodeType::SetGlobal => write!(f, "OpSetGlobal"),
             OpCodeType::Array => write!(f, "OpArray"),
+            OpCodeType::Hash => write!(f, "OpHash"),
         }
     }
 }
@@ -200,6 +204,7 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::GetGlobal => vec![2],
         OpCodeType::SetGlobal => vec![2],
         OpCodeType::Array => vec![2],
+        OpCodeType::Hash => vec![2],
     };
 
     Definition {
