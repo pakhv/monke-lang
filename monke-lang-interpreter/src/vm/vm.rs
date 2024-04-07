@@ -1,3 +1,4 @@
+use core::panic;
 use std::{collections::HashMap, usize};
 
 use crate::{
@@ -176,6 +177,12 @@ impl Vm {
                     let hash = self.build_hash(hash_len as usize)?;
                     self.push(hash)?;
                 }
+                OpCodeType::Index => {
+                    let index = self.pop()?;
+                    let left = self.pop()?;
+
+                    self.execute_index_expression(left, index)?;
+                }
                 _ => todo!(),
             }
 
@@ -331,6 +338,26 @@ impl Vm {
         }
 
         Ok(Object::HashTable(HashTable { pairs }))
+    }
+
+    fn execute_index_expression(&mut self, left: Object, index: Object) -> InterpreterResult<()> {
+        match (left, &index) {
+            (Object::Array(array), Object::Integer(idx)) => {
+                match array.elements.get(idx.value as usize) {
+                    Some(el) => self.push(el.clone()),
+                    None => self.push(Object::Null(Null {  }))
+                }
+            }
+            (Object::HashTable(hash), Object::Integer(_)) 
+                | (Object::HashTable(hash), Object::Boolean(_)) 
+                | (Object::HashTable(hash), Object::String(_)) => {
+                    match hash.pairs.get(&index) {
+                        Some(el) => self.push(el.clone()),
+                        None => self.push(Object::Null(Null { }))
+                    }
+                }
+            (actual_left, actual_idx) => panic!("couldn't execute index expression, array with int index or hash table expected, but got type \"{actual_left}\" and idx \"{actual_idx}\""),
+        }
     }
 }
 
@@ -764,6 +791,54 @@ mod tests {
                         TestCaseResult::Integer(16),
                     ),
                 ])),
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn index_expression_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("[1, 2, 3][1]"),
+                expected: TestCaseResult::Integer(2),
+            },
+            TestCase {
+                input: String::from("[1, 2, 3][0 + 2]"),
+                expected: TestCaseResult::Integer(3),
+            },
+            TestCase {
+                input: String::from("[[1, 1, 1]][0][0]"),
+                expected: TestCaseResult::Integer(1),
+            },
+            TestCase {
+                input: String::from("[][0]"),
+                expected: TestCaseResult::Null,
+            },
+            TestCase {
+                input: String::from("[1, 2, 3][99]"),
+                expected: TestCaseResult::Null,
+            },
+            TestCase {
+                input: String::from("[1][-1]"),
+                expected: TestCaseResult::Null,
+            },
+            TestCase {
+                input: String::from("{1: 1, 2: 2}[1]"),
+                expected: TestCaseResult::Integer(1),
+            },
+            TestCase {
+                input: String::from("{1: 1, 2: 2}[2]"),
+                expected: TestCaseResult::Integer(2),
+            },
+            TestCase {
+                input: String::from("{1: 1}[0]"),
+                expected: TestCaseResult::Null,
+            },
+            TestCase {
+                input: String::from("{}[0]"),
+                expected: TestCaseResult::Null,
             },
         ];
 

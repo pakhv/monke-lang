@@ -207,7 +207,14 @@ impl Compiler {
 
                     Ok(())
                 }
-                Expression::IndexExpression(_) => todo!(),
+                Expression::IndexExpression(index_exp) => {
+                    self.compile(Rc::clone(&index_exp.left).into())?;
+                    self.compile(Rc::clone(&index_exp.index).into())?;
+
+                    self.emit(OpCodeType::Index, vec![]);
+
+                    Ok(())
+                }
                 Expression::HashLiteral(hash_literal) => {
                     let mut keys: Vec<_> = hash_literal.pairs.keys().collect();
                     keys.sort_unstable_by(|&a, &b| {
@@ -824,6 +831,54 @@ two;
                     make(OpCodeType::Constant, vec![5]),
                     make(OpCodeType::Mul, vec![]),
                     make(OpCodeType::Hash, vec![4]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn index_expression_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("[1, 2, 3][1 + 1]"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::Integer(2),
+                    TestCaseResult::Integer(3),
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::Integer(1),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Array, vec![3]),
+                    make(OpCodeType::Constant, vec![3]),
+                    make(OpCodeType::Constant, vec![4]),
+                    make(OpCodeType::Add, vec![]),
+                    make(OpCodeType::Index, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("{1: 2}[2 - 1]"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::Integer(2),
+                    TestCaseResult::Integer(2),
+                    TestCaseResult::Integer(1),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Hash, vec![2]),
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Constant, vec![3]),
+                    make(OpCodeType::Sub, vec![]),
+                    make(OpCodeType::Index, vec![]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
