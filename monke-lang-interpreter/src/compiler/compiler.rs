@@ -371,6 +371,7 @@ mod test {
     enum TestCaseResult {
         Integer(i64),
         String(String),
+        InstructionsVec(Vec<Instructions>),
     }
 
     impl TestCaseResult {
@@ -381,6 +382,23 @@ mod test {
                 }
                 (TestCaseResult::String(expected), Object::String(actual_str)) => {
                     assert_eq!(expected, &actual_str.value)
+                }
+                (
+                    TestCaseResult::InstructionsVec(expected),
+                    Object::CompiledFunction(actual_func),
+                ) => {
+                    let expected_flattened: Instructions = expected
+                        .clone()
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                        .as_slice()
+                        .into();
+
+                    assert_eq!(
+                        expected_flattened.to_string(),
+                        actual_func.instructions.to_string()
+                    );
                 }
                 (t1, t2) => panic!("can't compare {t1:?} and {t2:?}"),
             }
@@ -883,6 +901,29 @@ two;
                 ],
             },
         ];
+
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn function_test() {
+        let expected = vec![TestCase {
+            input: String::from("fn() { return 5 + 10 }"),
+            expected_constants: vec![
+                TestCaseResult::Integer(5),
+                TestCaseResult::Integer(10),
+                TestCaseResult::InstructionsVec(vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Add, vec![]),
+                    make(OpCodeType::ReturnValue, vec![]),
+                ]),
+            ],
+            expected_instructions: vec![
+                make(OpCodeType::Constant, vec![2]),
+                make(OpCodeType::Pop, vec![]),
+            ],
+        }];
 
         run_compiler_tests(expected);
     }

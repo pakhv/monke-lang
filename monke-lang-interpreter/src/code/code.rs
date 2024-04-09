@@ -8,7 +8,7 @@ const BYTE_LENGTH: usize = 0x8;
 
 pub type OpCode = u8;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Instructions(pub Vec<u8>);
 
 impl Deref for Instructions {
@@ -87,6 +87,9 @@ pub enum OpCodeType {
     Array,
     Hash,
     Index,
+    Call,
+    ReturnValue,
+    Return,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -115,6 +118,9 @@ impl TryInto<OpCodeType> for u8 {
             19 => Ok(OpCodeType::Array),
             20 => Ok(OpCodeType::Hash),
             21 => Ok(OpCodeType::Index),
+            22 => Ok(OpCodeType::Call),
+            23 => Ok(OpCodeType::ReturnValue),
+            24 => Ok(OpCodeType::Return),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -149,6 +155,9 @@ impl From<OpCodeType> for u8 {
             OpCodeType::Array => 19,
             OpCodeType::Hash => 20,
             OpCodeType::Index => 21,
+            OpCodeType::Call => 22,
+            OpCodeType::ReturnValue => 23,
+            OpCodeType::Return => 24,
         }
     }
 }
@@ -177,6 +186,9 @@ impl Display for OpCodeType {
             OpCodeType::Array => write!(f, "OpArray"),
             OpCodeType::Hash => write!(f, "OpHash"),
             OpCodeType::Index => write!(f, "OpIndex"),
+            OpCodeType::Call => write!(f, "OpCall"),
+            OpCodeType::ReturnValue => write!(f, "OpReturnValue"),
+            OpCodeType::Return => write!(f, "OpReturn"),
         }
     }
 }
@@ -210,6 +222,9 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::Array => vec![2],
         OpCodeType::Hash => vec![2],
         OpCodeType::Index => vec![],
+        OpCodeType::Call => vec![],
+        OpCodeType::ReturnValue => vec![],
+        OpCodeType::Return => vec![],
     };
 
     Definition {

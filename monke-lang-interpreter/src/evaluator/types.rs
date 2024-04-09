@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 use crate::{
+    code::code::Instructions,
     parser::ast::{Identifier, Statement},
     result::InterpreterResult,
 };
@@ -18,6 +19,7 @@ pub enum Object {
     Builtin(BuiltinFunction),
     Array(Array),
     HashTable(HashTable),
+    CompiledFunction(CompiledFunction),
 }
 
 impl Display for Object {
@@ -32,6 +34,7 @@ impl Display for Object {
             Object::Builtin(builtin) => write!(f, "{builtin}"),
             Object::Array(array) => write!(f, "{array}"),
             Object::HashTable(hash) => write!(f, "{hash}"),
+            Object::CompiledFunction(compiled_function) => write!(f, "{compiled_function}"),
         }
     }
 }
@@ -164,5 +167,16 @@ impl Hash for HashTable {
             .collect();
 
         pairs.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct CompiledFunction {
+    pub instructions: Instructions,
+}
+
+impl Display for CompiledFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CompiledFunction[{}]", self.instructions)
     }
 }
