@@ -444,6 +444,9 @@ mod tests {
             }
 
             let byte_code = compiler.byte_code();
+            assert!(byte_code.is_ok());
+
+            let byte_code = byte_code.unwrap();
             let mut vm = Vm::new(byte_code);
 
             if let Err(err) = vm.run() {

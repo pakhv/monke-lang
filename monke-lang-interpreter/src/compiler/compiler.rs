@@ -17,12 +17,18 @@ struct EmittedInstruction {
 }
 
 #[derive(Debug)]
-pub struct Compiler {
+pub struct CompilationScope {
     pub instructions: Instructions,
-    pub constants: Vec<Object>,
     last_instruction: Option<EmittedInstruction>,
     prev_instruction: Option<EmittedInstruction>,
+}
+
+#[derive(Debug)]
+pub struct Compiler {
+    pub constants: Vec<Object>,
     pub symbol_table: SymbolTable,
+    pub scopes: Vec<CompilationScope>,
+    scope_index: usize,
 }
 
 #[derive(Debug)]
@@ -35,22 +41,32 @@ impl Compiler {
     const KEKL_VALUE: i32 = 9999;
 
     pub fn new() -> Self {
-        Compiler {
-            constants: vec![],
+        let main_scope = CompilationScope {
             instructions: Instructions(vec![]),
             last_instruction: None,
             prev_instruction: None,
+        };
+
+        Compiler {
+            constants: vec![],
             symbol_table: SymbolTable::new(),
+            scopes: vec![main_scope],
+            scope_index: 0,
         }
     }
 
     pub fn new_with_state(symbol_table: SymbolTable, constants: Vec<Object>) -> Self {
-        Compiler {
-            constants,
+        let main_scope = CompilationScope {
             instructions: Instructions(vec![]),
             last_instruction: None,
             prev_instruction: None,
+        };
+
+        Compiler {
+            constants,
             symbol_table,
+            scopes: vec![main_scope],
+            scope_index: 0,
         }
     }
 
@@ -68,14 +84,14 @@ impl Compiler {
                     self.compile(Rc::clone(&let_statement.value).into())?;
 
                     let symbol = self.symbol_table.define(let_statement.name.to_string());
-                    self.emit(OpCodeType::SetGlobal, vec![symbol.index as i32]);
+                    self.emit(OpCodeType::SetGlobal, vec![symbol.index as i32])?;
 
                     Ok(())
                 }
                 Statement::Return(_) => todo!(),
                 Statement::Expression(expression_statement) => {
                     self.compile(Rc::clone(&expression_statement.expression).into())?;
-                    self.emit(OpCodeType::Pop, vec![]);
+                    self.emit(OpCodeType::Pop, vec![])?;
 
                     Ok(())
                 }
@@ -94,7 +110,7 @@ impl Compiler {
                         .resolve(&ident.to_string())
                         .ok_or(format!("couldn't resolve identifier value: \"{ident}\""))?;
 
-                    self.emit(OpCodeType::GetGlobal, vec![value.index as i32]);
+                    self.emit(OpCodeType::GetGlobal, vec![value.index as i32])?;
 
                     Ok(())
                 }
@@ -103,7 +119,7 @@ impl Compiler {
                         value: int_expression.value,
                     });
                     let operand = self.add_constant(int);
-                    self.emit(OpCodeType::Constant, vec![operand as i32]);
+                    self.emit(OpCodeType::Constant, vec![operand as i32])?;
 
                     Ok(())
                 }
@@ -112,7 +128,7 @@ impl Compiler {
                         value: string.to_string(),
                     });
                     let operand = self.add_constant(str);
-                    self.emit(OpCodeType::Constant, vec![operand as i32]);
+                    self.emit(OpCodeType::Constant, vec![operand as i32])?;
 
                     Ok(())
                 }
@@ -120,8 +136,8 @@ impl Compiler {
                     self.compile(Rc::clone(&prefix.right).into())?;
 
                     match &prefix.token {
-                        Token::Bang => self.emit(OpCodeType::Bang, vec![]),
-                        Token::Minus => self.emit(OpCodeType::Minus, vec![]),
+                        Token::Bang => self.emit(OpCodeType::Bang, vec![])?,
+                        Token::Minus => self.emit(OpCodeType::Minus, vec![])?,
                         actual => Err(format!("couldn't compile prefix expression, bang or minus operators expected, but got {actual}"))?,
                     };
 
@@ -131,7 +147,7 @@ impl Compiler {
                     if infix_expression.token == Token::Lt {
                         self.compile(Rc::clone(&infix_expression.right).into())?;
                         self.compile(Rc::clone(&infix_expression.left).into())?;
-                        self.emit(OpCodeType::GreaterThan, vec![]);
+                        self.emit(OpCodeType::GreaterThan, vec![])?;
 
                         return Ok(());
                     }
@@ -140,13 +156,13 @@ impl Compiler {
                     self.compile(Rc::clone(&infix_expression.right).into())?;
 
                     match infix_expression.token {
-                        Token::Plus => self.emit(OpCodeType::Add, vec![]),
-                        Token::Minus => self.emit(OpCodeType::Sub, vec![]),
-                        Token::Asterisk => self.emit(OpCodeType::Mul, vec![]),
-                        Token::Slash => self.emit(OpCodeType::Div, vec![]),
-                        Token::Gt => self.emit(OpCodeType::GreaterThan, vec![]),
-                        Token::Eq => self.emit(OpCodeType::Equal, vec![]),
-                        Token::Ne => self.emit(OpCodeType::NotEqual, vec![]),
+                        Token::Plus => self.emit(OpCodeType::Add, vec![])?,
+                        Token::Minus => self.emit(OpCodeType::Sub, vec![])?,
+                        Token::Asterisk => self.emit(OpCodeType::Mul, vec![])?,
+                        Token::Slash => self.emit(OpCodeType::Div, vec![])?,
+                        Token::Gt => self.emit(OpCodeType::GreaterThan, vec![])?,
+                        Token::Eq => self.emit(OpCodeType::Equal, vec![])?,
+                        Token::Ne => self.emit(OpCodeType::NotEqual, vec![])?,
                         _ => todo!(),
                     };
 
@@ -154,44 +170,46 @@ impl Compiler {
                 }
                 Expression::Boolean(boolean_expr) => match boolean_expr.value {
                     true => {
-                        self.emit(OpCodeType::True, vec![]);
+                        self.emit(OpCodeType::True, vec![])?;
                         Ok(())
                     }
                     false => {
-                        self.emit(OpCodeType::False, vec![]);
+                        self.emit(OpCodeType::False, vec![])?;
                         Ok(())
                     }
                 },
                 Expression::If(if_expression) => {
                     self.compile(Rc::clone(&if_expression.condition).into())?;
                     let jump_not_truthy_pos =
-                        self.emit(OpCodeType::JumpNotTruthy, vec![Self::KEKL_VALUE]);
+                        self.emit(OpCodeType::JumpNotTruthy, vec![Self::KEKL_VALUE])?;
 
                     self.compile(Rc::clone(&if_expression.consequence).into())?;
 
-                    if self.last_instruction_is_pop() {
+                    if self.last_instructions_is_pop() {
                         self.remove_last_pop()?;
                     }
 
-                    let jump_pos = self.emit(OpCodeType::Jump, vec![Self::KEKL_VALUE]);
+                    let jump_pos = self.emit(OpCodeType::Jump, vec![Self::KEKL_VALUE])?;
 
-                    let after_consequence_pos = self.instructions.len() as i32;
+                    let after_consequence_pos =
+                        self.current_instructions().ok_or(String::from(""))?.len() as i32;
                     self.change_operand(jump_not_truthy_pos, after_consequence_pos)?;
 
                     match &if_expression.alternative {
                         Some(alternative) => {
                             self.compile(Rc::clone(alternative).into())?;
 
-                            if self.last_instruction_is_pop() {
+                            if self.last_instructions_is_pop() {
                                 self.remove_last_pop()?;
                             }
                         }
                         None => {
-                            self.emit(OpCodeType::Null, vec![]);
+                            self.emit(OpCodeType::Null, vec![])?;
                         }
                     }
 
-                    let after_alternative_pos = self.instructions.len() as i32;
+                    let after_alternative_pos =
+                        self.current_instructions().ok_or(String::from(""))?.len() as i32;
                     self.change_operand(jump_pos, after_alternative_pos)?;
 
                     Ok(())
@@ -203,7 +221,7 @@ impl Compiler {
                         self.compile(Rc::clone(el).into())?;
                     }
 
-                    self.emit(OpCodeType::Array, vec![array.elements.len() as i32]);
+                    self.emit(OpCodeType::Array, vec![array.elements.len() as i32])?;
 
                     Ok(())
                 }
@@ -211,7 +229,7 @@ impl Compiler {
                     self.compile(Rc::clone(&index_exp.left).into())?;
                     self.compile(Rc::clone(&index_exp.index).into())?;
 
-                    self.emit(OpCodeType::Index, vec![]);
+                    self.emit(OpCodeType::Index, vec![])?;
 
                     Ok(())
                 }
@@ -234,7 +252,7 @@ impl Compiler {
                     self.emit(
                         OpCodeType::Hash,
                         vec![(hash_literal.pairs.len() * 2) as i32],
-                    );
+                    )?;
 
                     Ok(())
                 }
@@ -242,11 +260,11 @@ impl Compiler {
         }
     }
 
-    pub fn byte_code(&self) -> ByteCode {
-        ByteCode {
+    pub fn byte_code(&self) -> InterpreterResult<ByteCode> {
+        Ok(ByteCode {
             constants: self.constants.clone(),
-            instructions: self.instructions.clone(),
-        }
+            instructions: self.current_instructions().ok_or(String::from(""))?,
+        })
     }
 
     fn add_constant(&mut self, obj: Object) -> usize {
@@ -254,38 +272,58 @@ impl Compiler {
         self.constants.len() - 1
     }
 
-    fn emit(&mut self, op: OpCodeType, operands: Vec<i32>) -> usize {
+    fn emit(&mut self, op: OpCodeType, operands: Vec<i32>) -> InterpreterResult<usize> {
         let instructions = make(op.clone(), operands);
-        let pos = self.add_instructions(instructions);
+        let pos = self.add_instructions(instructions)?;
 
-        self.set_last_instruction(op, pos);
+        self.set_last_instructions(op, pos)?;
 
-        pos
+        Ok(pos)
     }
 
-    fn add_instructions(&mut self, instructions: Instructions) -> usize {
-        let new_instruction_position = self.instructions.len();
+    fn add_instructions(&mut self, instructions: Instructions) -> InterpreterResult<usize> {
+        let cur_instructions = self
+            .current_instructions()
+            .ok_or(String::from("couldn't get current instructions"))?;
+        let new_instruction_position = cur_instructions.len();
 
-        for byte in instructions {
-            self.instructions.0.push(byte);
-        }
+        let updated_instructions = [cur_instructions.0, instructions.0].concat();
+        self.scopes[self.scope_index].instructions = Instructions(updated_instructions);
 
-        new_instruction_position
+        Ok(new_instruction_position)
     }
 
-    fn set_last_instruction(&mut self, op: OpCodeType, pos: usize) {
-        let prev = self.last_instruction.clone();
+    fn current_instructions(&self) -> Option<Instructions> {
+        self.scopes
+            .get(self.scope_index)
+            .and_then(|scope| Some(scope.instructions.clone()))
+    }
+
+    fn set_last_instructions(&mut self, op: OpCodeType, pos: usize) -> InterpreterResult<()> {
+        let prev = self
+            .scopes
+            .get(self.scope_index)
+            .ok_or(String::from("couldn't set last instruction"))?
+            .last_instruction
+            .clone();
+
         let last = Some(EmittedInstruction {
             op_code: op,
             position: pos,
         });
 
-        self.prev_instruction = prev;
-        self.last_instruction = last;
+        self.scopes[self.scope_index].prev_instruction = prev;
+        self.scopes[self.scope_index].last_instruction = last;
+
+        Ok(())
     }
 
-    fn last_instruction_is_pop(&self) -> bool {
-        match &self.last_instruction {
+    fn last_instructions_is_pop(&self) -> bool {
+        match self
+            .scopes
+            .get(self.scope_index)
+            .and_then(|scope| scope.last_instruction.as_ref())
+        {
             Some(instruction) => match instruction.op_code {
                 OpCodeType::Pop => true,
                 _ => false,
@@ -295,18 +333,22 @@ impl Compiler {
     }
 
     fn remove_last_pop(&mut self) -> InterpreterResult<()> {
-        match &self.last_instruction {
+        match &self
+            .scopes
+            .get(self.scope_index)
+            .and_then(|scope| scope.last_instruction.as_ref())
+        {
             Some(EmittedInstruction {
                 op_code: _,
                 position,
             }) => {
-                self.instructions = self
+                self.scopes[self.scope_index].instructions = self.scopes[self.scope_index]
                     .instructions
-                    .0
                     .get(..*position)
                     .ok_or(String::from("couldn't compile, failed to remove last pop"))?
                     .into();
-                self.last_instruction = self.prev_instruction.clone();
+                self.scopes[self.scope_index].last_instruction =
+                    self.scopes[self.scope_index].prev_instruction.clone();
 
                 Ok(())
             }
@@ -320,9 +362,14 @@ impl Compiler {
         new_instructions: Instructions,
     ) -> InterpreterResult<()> {
         for idx in 0..new_instructions.len() {
-            match (self.instructions.get(pos + idx), new_instructions.get(idx)) {
+            match (
+                self.scopes
+                    .get(self.scope_index)
+                    .and_then(|scope| scope.instructions.get(pos + idx)),
+                new_instructions.get(idx),
+            ) {
                 (Some(_), Some(_)) => {
-                    self.instructions.0[pos + idx] = new_instructions[idx];
+                    self.scopes[self.scope_index].instructions.0[pos + idx] = new_instructions[idx];
                 }
                 _ => Err(String::from(
                     "couldn't compile, failed to replace intructions",
@@ -334,16 +381,48 @@ impl Compiler {
     }
 
     fn change_operand(&mut self, pos: usize, operand: i32) -> InterpreterResult<()> {
-        if let None = self.instructions.get(pos) {
+        let cur_instructions = self.current_instructions();
+
+        if let None = cur_instructions {
             return Err(String::from("couldn't compile, failed change operand"));
         }
 
-        let op: OpCodeType = self.instructions[pos]
+        let cur_instructions = cur_instructions.unwrap();
+        let op = cur_instructions.get(pos);
+
+        if let None = op {
+            return Err(String::from("couldn't compile, failed change operand"));
+        }
+
+        let op = *op.clone().unwrap();
+        let op: OpCodeType = op
             .try_into()
             .map_err(|_| String::from("couldn't compile, failed change operand"))?;
         let new_instructions = make(op, vec![operand]);
 
         self.replace_instructions(pos, new_instructions)
+    }
+
+    fn enter_scope(&mut self) {
+        let scope = CompilationScope {
+            instructions: Instructions(vec![]),
+            last_instruction: None,
+            prev_instruction: None,
+        };
+
+        self.scopes.push(scope);
+        self.scope_index += 1;
+    }
+
+    fn leave_scope(&mut self) -> Option<Instructions> {
+        let scope = self.scopes.pop();
+
+        match scope {
+            Some(_) => self.scope_index -= 1,
+            None => (),
+        };
+
+        scope.map(|scope| scope.instructions)
     }
 }
 
@@ -426,6 +505,8 @@ mod test {
             }
 
             let byte_code = compiler.byte_code();
+            assert!(byte_code.is_ok());
+            let byte_code = byte_code.unwrap();
 
             test_instructions(&byte_code, &case);
             test_constants(&byte_code, &case);
@@ -926,5 +1007,45 @@ two;
         }];
 
         run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn compiler_scope_test() {
+        let mut compiler = Compiler::new();
+        assert_eq!(compiler.scope_index, 0);
+
+        assert!(compiler.emit(OpCodeType::Mul, vec![]).is_ok());
+        compiler.enter_scope();
+
+        assert_eq!(compiler.scope_index, 1);
+        assert!(compiler.emit(OpCodeType::Sub, vec![]).is_ok());
+
+        assert!(compiler.scopes.get(compiler.scope_index).is_some());
+        assert_eq!(compiler.scopes[compiler.scope_index].instructions.len(), 1);
+
+        let last = compiler.scopes[compiler.scope_index]
+            .last_instruction
+            .clone();
+        assert!(last.is_some());
+        assert_eq!(last.unwrap().op_code, OpCodeType::Sub);
+
+        compiler.leave_scope();
+        assert_eq!(compiler.scope_index, 0);
+
+        assert!(compiler.emit(OpCodeType::Add, vec![]).is_ok());
+        assert!(compiler.scopes.get(compiler.scope_index).is_some());
+        assert_eq!(compiler.scopes[compiler.scope_index].instructions.len(), 2);
+
+        let last = compiler.scopes[compiler.scope_index]
+            .last_instruction
+            .clone();
+        assert!(last.is_some());
+        assert_eq!(last.unwrap().op_code, OpCodeType::Add);
+
+        let prev = compiler.scopes[compiler.scope_index]
+            .prev_instruction
+            .clone();
+        assert!(prev.is_some());
+        assert_eq!(prev.unwrap().op_code, OpCodeType::Mul);
     }
 }
