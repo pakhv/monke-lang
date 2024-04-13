@@ -2,7 +2,7 @@ use std::{rc::Rc, usize};
 
 use crate::{
     code::code::{make, Instructions, OpCodeType},
-    evaluator::types::{Integer, Object, Str},
+    evaluator::types::{CompiledFunction, Integer, Object, Str},
     lexer::token::Token,
     parser::ast::{Expression, Program, Statement},
     result::InterpreterResult,
@@ -88,7 +88,12 @@ impl Compiler {
 
                     Ok(())
                 }
-                Statement::Return(_) => todo!(),
+                Statement::Return(return_statement) => {
+                    self.compile(Rc::clone(&return_statement.return_value).into())?;
+                    self.emit(OpCodeType::ReturnValue, vec![])?;
+
+                    Ok(())
+                }
                 Statement::Expression(expression_statement) => {
                     self.compile(Rc::clone(&expression_statement.expression).into())?;
                     self.emit(OpCodeType::Pop, vec![])?;
@@ -185,7 +190,7 @@ impl Compiler {
 
                     self.compile(Rc::clone(&if_expression.consequence).into())?;
 
-                    if self.last_instructions_is_pop() {
+                    if self.last_instruction_is(OpCodeType::Pop) {
                         self.remove_last_pop()?;
                     }
 
@@ -199,7 +204,7 @@ impl Compiler {
                         Some(alternative) => {
                             self.compile(Rc::clone(alternative).into())?;
 
-                            if self.last_instructions_is_pop() {
+                            if self.last_instruction_is(OpCodeType::Pop) {
                                 self.remove_last_pop()?;
                             }
                         }
@@ -214,7 +219,26 @@ impl Compiler {
 
                     Ok(())
                 }
-                Expression::FunctionLiteral(_) => todo!(),
+                Expression::FunctionLiteral(func) => {
+                    self.enter_scope();
+                    self.compile(Rc::clone(&func.body).into())?;
+
+                    if self.last_instruction_is(OpCodeType::Pop) {
+                        self.replace_last_pop_with_return()?;
+                    }
+
+                    if !self.last_instruction_is(OpCodeType::ReturnValue) {
+                        self.emit(OpCodeType::Return, vec![])?;
+                    }
+
+                    let instructions = self.leave_scope().ok_or(String::from(""))?;
+                    let compiled_fn = Object::CompiledFunction(CompiledFunction { instructions });
+
+                    let compiled_fn_const = self.add_constant(compiled_fn);
+                    self.emit(OpCodeType::Constant, vec![compiled_fn_const as i32])?;
+
+                    Ok(())
+                }
                 Expression::Call(_) => todo!(),
                 Expression::ArrayLiteral(array) => {
                     for el in &array.elements {
@@ -423,6 +447,35 @@ impl Compiler {
         };
 
         scope.map(|scope| scope.instructions)
+    }
+
+    fn last_instruction_is(&self, op: OpCodeType) -> bool {
+        match self.scopes.get(self.scope_index) {
+            Some(scope) => match &scope.last_instruction {
+                Some(ins) => ins.op_code == op,
+                None => false,
+            },
+            None => false,
+        }
+    }
+
+    fn replace_last_pop_with_return(&mut self) -> InterpreterResult<()> {
+        let mut last_instructions = self
+            .scopes
+            .get(self.scope_index)
+            .ok_or(String::from(""))?
+            .last_instruction
+            .clone()
+            .ok_or(String::from(""))?;
+
+        self.replace_instructions(
+            last_instructions.position,
+            make(OpCodeType::ReturnValue, vec![]),
+        )?;
+        last_instructions.op_code = OpCodeType::ReturnValue;
+        self.scopes[self.scope_index].last_instruction = Some(last_instructions);
+
+        Ok(())
     }
 }
 
@@ -988,23 +1041,70 @@ two;
 
     #[test]
     fn function_test() {
-        let expected = vec![TestCase {
-            input: String::from("fn() { return 5 + 10 }"),
-            expected_constants: vec![
-                TestCaseResult::Integer(5),
-                TestCaseResult::Integer(10),
-                TestCaseResult::InstructionsVec(vec![
+        let expected = vec![
+            TestCase {
+                input: String::from("fn() { return 5 + 10 }"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(5),
+                    TestCaseResult::Integer(10),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![0]),
+                        make(OpCodeType::Constant, vec![1]),
+                        make(OpCodeType::Add, vec![]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("fn() { 5 + 10 }"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(5),
+                    TestCaseResult::Integer(10),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![0]),
+                        make(OpCodeType::Constant, vec![1]),
+                        make(OpCodeType::Add, vec![]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("fn() { 1; 2 }"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::Integer(2),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![0]),
+                        make(OpCodeType::Pop, vec![]),
+                        make(OpCodeType::Constant, vec![1]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("fn() { }"),
+                expected_constants: vec![TestCaseResult::InstructionsVec(vec![make(
+                    OpCodeType::Return,
+                    vec![],
+                )])],
+                expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
-                    make(OpCodeType::Constant, vec![1]),
-                    make(OpCodeType::Add, vec![]),
-                    make(OpCodeType::ReturnValue, vec![]),
-                ]),
-            ],
-            expected_instructions: vec![
-                make(OpCodeType::Constant, vec![2]),
-                make(OpCodeType::Pop, vec![]),
-            ],
-        }];
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
 
         run_compiler_tests(expected);
     }
