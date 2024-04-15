@@ -239,7 +239,12 @@ impl Compiler {
 
                     Ok(())
                 }
-                Expression::Call(_) => todo!(),
+                Expression::Call(call) => {
+                    self.compile(Rc::clone(&call.function).into())?;
+                    self.emit(OpCodeType::Call, vec![])?;
+
+                    Ok(())
+                }
                 Expression::ArrayLiteral(array) => {
                     for el in &array.elements {
                         self.compile(Rc::clone(el).into())?;
@@ -1147,5 +1152,48 @@ two;
             .clone();
         assert!(prev.is_some());
         assert_eq!(prev.unwrap().op_code, OpCodeType::Mul);
+    }
+
+    #[test]
+    fn function_call_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("fn() { 24 }();"),
+                expected_constants: vec![
+                    TestCaseResult::Integer(24),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![0]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Call, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "let noArg = fn() { 24 };
+noArg();",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::Integer(24),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![0]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::GetGlobal, vec![0]),
+                    make(OpCodeType::Call, vec![]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
+        run_compiler_tests(expected);
     }
 }

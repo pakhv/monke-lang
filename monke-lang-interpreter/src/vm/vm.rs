@@ -4,27 +4,46 @@ use std::{collections::HashMap, usize};
 use crate::{
     code::code::{read_u16, Instructions, OpCodeType},
     compiler::compiler::ByteCode,
-    evaluator::types::{Array, Boolean, HashTable, Integer, Null, Object, Str},
+    evaluator::types::{Array, Boolean, CompiledFunction, HashTable, Integer, Null, Object, Str},
     result::InterpreterResult,
 };
 
 const STACK_SIZE: usize = 2048;
 const GLOBALS_SIZE: usize = 65536;
+const MAX_FRAMES: usize = 1024;
+
+#[derive(Debug)]
+struct Frame {
+    func: CompiledFunction,
+    ip: isize
+}
+
+impl Frame {
+    fn new(func: CompiledFunction) -> Self {
+        Frame { ip: -1, func }
+    }
+
+    fn instructions(&self) -> &Instructions {
+        &self.func.instructions
+    }
+}
 
 #[derive(Debug)]
 pub struct Vm {
     constants: Vec<Object>,
-    instructions: Instructions,
     stack: Vec<Object>,
     sp: usize,
-    pub globals: Vec<Object>,
+    globals: Vec<Object>,
+    frames: Vec<Frame>,
+    frames_index: usize
 }
 
 impl Vm {
     pub fn new(byte_code: ByteCode) -> Self {
         Vm {
             constants: byte_code.constants,
-            instructions: byte_code.instructions,
+            frames: vec![Frame::new(CompiledFunction { instructions: byte_code.instructions})],
+            frames_index: 1,
             stack: vec![Object::Null(Null {}); STACK_SIZE],
             sp: 0,
             globals: vec![Object::Null(Null {}); GLOBALS_SIZE],
@@ -34,7 +53,8 @@ impl Vm {
     pub fn new_with_global_store(byte_code: ByteCode, globals: Vec<Object>) -> Self {
         Vm {
             constants: byte_code.constants,
-            instructions: byte_code.instructions,
+            frames: vec![Frame::new(CompiledFunction { instructions: byte_code.instructions})],
+            frames_index: 1,
             stack: vec![Object::Null(Null {}); STACK_SIZE],
             sp: 0,
             globals,
@@ -48,21 +68,24 @@ impl Vm {
     pub fn run(&mut self) -> InterpreterResult<()> {
         let mut ip = 0;
 
-        while ip < self.instructions.len() {
-            let op: OpCodeType = (*self
-                .instructions
+        while ip < self.current_frame()?.instructions().len() {
+            self.current_frame()?.ip += 1;
+            ip = self.current_frame()?.ip as usize;
+            let ins = self.current_frame()?.instructions();
+
+            let op: OpCodeType = (ins
                 .get(ip)
                 .ok_or(format!("couldn't parse byte code"))?)
-            .try_into()?;
+                .clone()
+                .try_into()?;
 
             match op {
                 OpCodeType::Constant => {
-                    let const_idx = read_u16(
-                        self.instructions
-                            .get(ip + 1..)
-                            .ok_or(format!("couldn't parse byte code"))?,
+                    let const_idx = read_u16(ins
+                        .get(ip + 1..)
+                        .ok_or(format!("couldn't parse byte code"))?,
                     );
-                    ip += 2;
+                    self.current_frame()?.ip += 2;
 
                     self.push(
                         self.constants
@@ -107,46 +130,42 @@ impl Vm {
                     actual => Err(format!("unsupported type for negation, got {actual}"))?,
                 },
                 OpCodeType::Jump => {
-                    let pos = read_u16(
-                        self.instructions
-                            .get(ip + 1..)
-                            .ok_or(format!("couldn't parse byte code"))?,
+                    let pos = read_u16( ins
+                        .get(ip + 1..)
+                        .ok_or(format!("couldn't parse byte code"))?,
                     );
 
-                    ip = (pos - 1) as usize;
+                    self.current_frame()?.ip = (pos - 1) as isize;
                 }
                 OpCodeType::JumpNotTruthy => {
-                    let pos = read_u16(
-                        self.instructions
-                            .get(ip + 1..)
-                            .ok_or(format!("couldn't parse byte code"))?,
+                    let pos = read_u16(ins
+                        .get(ip + 1..)
+                        .ok_or(format!("couldn't parse byte code"))?,
                     );
 
-                    ip += 2;
+                    self.current_frame()?.ip += 2;
                     let condition = self.pop()?;
 
                     if !Self::is_truthy(condition) {
-                        ip = (pos - 1) as usize;
+                        self.current_frame()?.ip = (pos - 1) as isize;
                     }
                 }
                 OpCodeType::Null => self.push(Object::Null(Null {}))?,
                 OpCodeType::SetGlobal => {
-                    let pos = read_u16(
-                        self.instructions
-                            .get(ip + 1..)
-                            .ok_or(format!("couldn't parse byte code"))?,
+                    let pos = read_u16(ins
+                        .get(ip + 1..)
+                        .ok_or(format!("couldn't parse byte code"))?,
                     );
-                    ip += 2;
+                    self.current_frame()?.ip += 2;
 
                     self.globals[pos as usize] = self.pop()?;
                 }
                 OpCodeType::GetGlobal => {
-                    let pos = read_u16(
-                        self.instructions
-                            .get(ip + 1..)
-                            .ok_or(format!("couldn't parse byte code"))?,
+                    let pos = read_u16(ins
+                        .get(ip + 1..)
+                        .ok_or(format!("couldn't parse byte code"))?,
                     );
-                    ip += 2;
+                    self.current_frame()?.ip += 2;
 
                     self.push(
                         self.globals
@@ -156,23 +175,21 @@ impl Vm {
                     )?;
                 }
                 OpCodeType::Array => {
-                    let array_len = read_u16(
-                        self.instructions
-                            .get(ip + 1..)
-                            .ok_or(format!("couldn't parse byte code"))?,
+                    let array_len = read_u16(ins
+                        .get(ip + 1..)
+                        .ok_or(format!("couldn't parse byte code"))?,
                     );
-                    ip += 2;
+                    self.current_frame()?.ip += 2;
 
                     let array = self.build_array(self.sp - array_len as usize, self.sp)?;
                     self.push(array)?;
                 }
                 OpCodeType::Hash => {
-                    let hash_len = read_u16(
-                        self.instructions
-                            .get(ip + 1..)
-                            .ok_or(format!("couldn't parse byte code"))?,
+                    let hash_len = read_u16(ins
+                        .get(ip + 1..)
+                        .ok_or(format!("couldn't parse byte code"))?,
                     );
-                    ip += 2;
+                    self.current_frame()?.ip += 2;
 
                     let hash = self.build_hash(hash_len as usize)?;
                     self.push(hash)?;
@@ -358,6 +375,20 @@ impl Vm {
                 }
             (actual_left, actual_idx) => panic!("couldn't execute index expression, array with int index or hash table expected, but got type \"{actual_left}\" and idx \"{actual_idx}\""),
         }
+    }
+
+    fn current_frame(&mut self) -> InterpreterResult<&mut Frame> {
+        self.frames.get_mut(self.frames_index - 1).ok_or(String::from("couldn't get current frame"))
+    }
+
+    fn push_frame(&mut self, frame: Frame) {
+        self.frames.push(frame);
+        self.frames_index +=1;
+    }
+
+    fn pop_frame(&mut self) -> Option<Frame> {
+        self.frames_index -= 1;
+        self.frames.pop()
     }
 }
 
