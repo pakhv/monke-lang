@@ -12,7 +12,7 @@ const STACK_SIZE: usize = 2048;
 const GLOBALS_SIZE: usize = 65536;
 const MAX_FRAMES: usize = 1024;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Frame {
     func: CompiledFunction,
     ip: isize
@@ -34,15 +34,18 @@ pub struct Vm {
     stack: Vec<Object>,
     sp: usize,
     globals: Vec<Object>,
-    frames: Vec<Frame>,
+    frames: Vec<Option<Frame>>,
     frames_index: usize
 }
 
 impl Vm {
     pub fn new(byte_code: ByteCode) -> Self {
+        let mut frames = vec![None; MAX_FRAMES];
+        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions}));
+
         Vm {
             constants: byte_code.constants,
-            frames: vec![Frame::new(CompiledFunction { instructions: byte_code.instructions})],
+            frames,
             frames_index: 1,
             stack: vec![Object::Null(Null {}); STACK_SIZE],
             sp: 0,
@@ -51,9 +54,12 @@ impl Vm {
     }
 
     pub fn new_with_global_store(byte_code: ByteCode, globals: Vec<Object>) -> Self {
+        let mut frames = vec![None; MAX_FRAMES];
+        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions}));
+
         Vm {
             constants: byte_code.constants,
-            frames: vec![Frame::new(CompiledFunction { instructions: byte_code.instructions})],
+            frames,
             frames_index: 1,
             stack: vec![Object::Null(Null {}); STACK_SIZE],
             sp: 0,
@@ -66,9 +72,9 @@ impl Vm {
     }
 
     pub fn run(&mut self) -> InterpreterResult<()> {
-        let mut ip = 0;
+        let mut ip;
 
-        while ip < self.current_frame()?.instructions().len() {
+        while self.current_frame().is_ok_and(|f| f.ip < (f.instructions().len() - 1) as isize) {
             self.current_frame()?.ip += 1;
             ip = self.current_frame()?.ip as usize;
             let ins = self.current_frame()?.instructions();
@@ -200,10 +206,32 @@ impl Vm {
 
                     self.execute_index_expression(left, index)?;
                 }
+                OpCodeType::Call => {
+                    let obj = self.stack.get(self.sp - 1).ok_or(format!(""))?;
+
+                    match obj {
+                        Object::CompiledFunction(compiled_fn) => {
+                            let frame = Frame::new(compiled_fn.clone());
+                            self.push_frame(frame);
+                        }
+                        actual => Err(format!("calling non-function, got \"{actual}\""))?
+                    }
+                }
+                OpCodeType::ReturnValue => {
+                    let return_value = self.pop()?;
+                    self.pop_frame()?;
+                    self.pop()?;
+
+                    self.push(return_value)?;
+                }
+                OpCodeType::Return => {
+                    self.pop_frame()?;
+                    self.pop()?;
+
+                    self.push(Object::Null(Null {  }))?;
+                }
                 _ => todo!(),
             }
-
-            ip += 1;
         }
 
         Ok(())
@@ -236,7 +264,7 @@ impl Vm {
         Ok(self
             .stack
             .get(self.sp)
-            .ok_or(String::from(
+            .ok_or(format!(
                 "couldn't pop from the stack, index is out of bounds",
             ))?
             .clone())
@@ -378,17 +406,25 @@ impl Vm {
     }
 
     fn current_frame(&mut self) -> InterpreterResult<&mut Frame> {
-        self.frames.get_mut(self.frames_index - 1).ok_or(String::from("couldn't get current frame"))
+        self.frames
+            .get_mut(self.frames_index - 1)
+            .ok_or(String::from("couldn't get current frame"))?
+            .as_mut()
+            .ok_or(format!("couldn't get current frame"))
     }
 
     fn push_frame(&mut self, frame: Frame) {
-        self.frames.push(frame);
+        self.frames[self.frames_index] = Some(frame);
         self.frames_index +=1;
     }
 
-    fn pop_frame(&mut self) -> Option<Frame> {
+    fn pop_frame(&mut self) -> InterpreterResult<Frame> {
         self.frames_index -= 1;
-        self.frames.pop()
+        self.frames
+            .get(self.frames_index)
+            .ok_or(format!("couldn't pop frame, frames stack is empty"))?
+            .clone()
+            .ok_or(format!("couldn't pop frame, frames stack is empty"))
     }
 }
 
@@ -873,6 +909,84 @@ mod tests {
             TestCase {
                 input: String::from("{}[0]"),
                 expected: TestCaseResult::Null,
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn calling_functions_without_arguments() {
+        let expected = vec![
+            TestCase {
+                input: String::from("
+let fivePlusTen = fn() { 5 + 10; };
+fivePlusTen();
+"),
+                expected: TestCaseResult::Integer(15),
+            },
+            TestCase {
+                input: String::from("
+let one = fn() { 1; };
+let two = fn() { 2; };
+one() + two()
+"),
+                expected: TestCaseResult::Integer(3),
+            },
+            TestCase {
+                input: String::from("
+let a = fn() { 1 };
+let b = fn() { a() + 1 };
+let c = fn() { b() + 1 };
+c();
+"),
+                expected: TestCaseResult::Integer(3),
+            },
+            TestCase {
+                input: String::from("
+let earlyExit = fn() { return 99; 100; };
+earlyExit();"
+),
+                expected: TestCaseResult::Integer(99),
+            },
+            TestCase {
+                input: String::from("
+let earlyExit = fn() { return 99; return 100; };
+earlyExit();"
+),
+                expected: TestCaseResult::Integer(99),
+            },
+            TestCase {
+                input: String::from("
+let noReturn = fn() { };
+noReturn();"
+),
+                expected: TestCaseResult::Null,
+            },
+            TestCase {
+                input: String::from("
+let noReturn = fn() { };
+let noReturnTwo = fn() { noReturn(); };
+noReturn();
+noReturnTwo();"
+),
+                expected: TestCaseResult::Null
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn first_class_function_test() {
+    let expected = vec![
+            TestCase {
+                input: String::from("
+let returnsOne = fn() { 1; };
+let returnsOneReturner = fn() { returnsOne; };
+returnsOneReturner()();
+"),
+                expected: TestCaseResult::Integer(1),
             },
         ];
 
