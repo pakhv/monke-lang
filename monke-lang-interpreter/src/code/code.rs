@@ -90,6 +90,8 @@ pub enum OpCodeType {
     Call,
     ReturnValue,
     Return,
+    GetLocal,
+    SetLocal,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -121,6 +123,8 @@ impl TryInto<OpCodeType> for u8 {
             22 => Ok(OpCodeType::Call),
             23 => Ok(OpCodeType::ReturnValue),
             24 => Ok(OpCodeType::Return),
+            25 => Ok(OpCodeType::GetLocal),
+            26 => Ok(OpCodeType::SetLocal),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -158,6 +162,8 @@ impl From<OpCodeType> for u8 {
             OpCodeType::Call => 22,
             OpCodeType::ReturnValue => 23,
             OpCodeType::Return => 24,
+            OpCodeType::GetLocal => 25,
+            OpCodeType::SetLocal => 26,
         }
     }
 }
@@ -189,6 +195,8 @@ impl Display for OpCodeType {
             OpCodeType::Call => write!(f, "OpCall"),
             OpCodeType::ReturnValue => write!(f, "OpReturnValue"),
             OpCodeType::Return => write!(f, "OpReturn"),
+            OpCodeType::GetLocal => write!(f, "OpGetLocal"),
+            OpCodeType::SetLocal => write!(f, "OpSetLocal"),
         }
     }
 }
@@ -225,6 +233,8 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::Call => vec![],
         OpCodeType::ReturnValue => vec![],
         OpCodeType::Return => vec![],
+        OpCodeType::GetLocal => vec![1],
+        OpCodeType::SetLocal => vec![1],
     };
 
     Definition {
@@ -266,6 +276,7 @@ pub fn read_operands(def: Definition, instruction: Instructions) -> (Vec<i32>, u
             2 => {
                 result.push((slice[0] as i32) << BYTE_LENGTH | slice[1] as i32);
             }
+            1 => result.push(slice[0] as i32),
             _ => (),
         }
 
@@ -296,6 +307,11 @@ mod tests {
                 vec![OpCodeType::Constant.into(), 255, 254],
             ),
             (OpCodeType::Add, vec![], vec![OpCodeType::Add.into()]),
+            (
+                OpCodeType::GetLocal,
+                vec![255],
+                vec![OpCodeType::GetLocal.into(), 255],
+            ),
         ];
 
         for (opcode, operands, expected) in expected_result {
@@ -311,7 +327,10 @@ mod tests {
 
     #[test]
     fn read_operands_test() {
-        let expected = vec![(OpCodeType::Constant, vec![65535], 2)];
+        let expected = vec![
+            (OpCodeType::Constant, vec![65535], 2),
+            (OpCodeType::GetLocal, vec![255], 1),
+        ];
 
         for (op, operands, bytes_read) in expected {
             let instruction = make(op.clone(), operands.clone());
@@ -328,13 +347,15 @@ mod tests {
     fn instructions_string_test() {
         let instructions = vec![
             make(OpCodeType::Add, vec![]),
+            make(OpCodeType::GetLocal, vec![1]),
             make(OpCodeType::Constant, vec![2]),
             make(OpCodeType::Constant, vec![65535]),
         ];
 
         let expected = r#"0000 OpAdd
-0001 OpConstant 2
-0004 OpConstant 65535
+0001 OpGetLocal 1
+0003 OpConstant 2
+0006 OpConstant 65535
 "#;
 
         let instructions = Instructions(instructions.into_iter().flatten().collect::<Vec<_>>());

@@ -1,4 +1,4 @@
-use std::{rc::Rc, usize};
+use std::rc::Rc;
 
 use crate::{
     code::code::{make, Instructions, OpCodeType},
@@ -8,7 +8,7 @@ use crate::{
     result::InterpreterResult,
 };
 
-use super::symbol_table::SymbolTable;
+use super::symbol_table::{SymbolScope, SymbolTable, SymbolTableRef};
 
 #[derive(Debug, Clone)]
 struct EmittedInstruction {
@@ -26,7 +26,7 @@ pub struct CompilationScope {
 #[derive(Debug)]
 pub struct Compiler {
     pub constants: Vec<Object>,
-    pub symbol_table: SymbolTable,
+    pub symbol_table: SymbolTableRef,
     pub scopes: Vec<CompilationScope>,
     scope_index: usize,
 }
@@ -55,7 +55,7 @@ impl Compiler {
         }
     }
 
-    pub fn new_with_state(symbol_table: SymbolTable, constants: Vec<Object>) -> Self {
+    pub fn new_with_state(symbol_table: SymbolTableRef, constants: Vec<Object>) -> Self {
         let main_scope = CompilationScope {
             instructions: Instructions(vec![]),
             last_instruction: None,
@@ -83,8 +83,19 @@ impl Compiler {
                 Statement::Let(let_statement) => {
                     self.compile(Rc::clone(&let_statement.value).into())?;
 
-                    let symbol = self.symbol_table.define(let_statement.name.to_string());
-                    self.emit(OpCodeType::SetGlobal, vec![symbol.index as i32])?;
+                    let symbol = self
+                        .symbol_table
+                        .borrow_mut()
+                        .define(let_statement.name.to_string());
+
+                    match symbol.scope {
+                        SymbolScope::Global => {
+                            self.emit(OpCodeType::SetGlobal, vec![symbol.index as i32])?
+                        }
+                        SymbolScope::Local => {
+                            self.emit(OpCodeType::SetLocal, vec![symbol.index as i32])?
+                        }
+                    };
 
                     Ok(())
                 }
@@ -112,10 +123,19 @@ impl Compiler {
                 Expression::Identifier(ident) => {
                     let value = self
                         .symbol_table
+                        .borrow()
                         .resolve(&ident.to_string())
-                        .ok_or(format!("couldn't resolve identifier value: \"{ident}\""))?;
+                        .ok_or(format!("couldn't resolve identifier value: \"{ident}\""))?
+                        .clone();
 
-                    self.emit(OpCodeType::GetGlobal, vec![value.index as i32])?;
+                    match value.scope {
+                        SymbolScope::Global => {
+                            self.emit(OpCodeType::GetGlobal, vec![value.index as i32])?
+                        }
+                        SymbolScope::Local => {
+                            self.emit(OpCodeType::GetLocal, vec![value.index as i32])?
+                        }
+                    };
 
                     Ok(())
                 }
@@ -441,6 +461,7 @@ impl Compiler {
 
         self.scopes.push(scope);
         self.scope_index += 1;
+        self.symbol_table = SymbolTable::new_enclosed(Rc::clone(&self.symbol_table));
     }
 
     fn leave_scope(&mut self) -> Option<Instructions> {
@@ -450,6 +471,13 @@ impl Compiler {
             Some(_) => self.scope_index -= 1,
             None => (),
         };
+
+        let outer_symbol_table = {
+            let symbol_table = self.symbol_table.borrow();
+            Rc::clone(symbol_table.outer.as_ref().ok_or(format!("")).unwrap())
+        };
+
+        self.symbol_table = outer_symbol_table;
 
         scope.map(|scope| scope.instructions)
     }
@@ -487,6 +515,7 @@ impl Compiler {
 #[cfg(test)]
 mod test {
     use core::panic;
+    use std::rc::Rc;
 
     use crate::{
         code::code::{make, Instructions, OpCodeType},
@@ -1195,5 +1224,151 @@ noArg();",
         ];
 
         run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn let_statement_scope_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from(
+                    "
+let num = 55;
+fn() { num };",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::Integer(55),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::GetGlobal, vec![0]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+fn() {
+    let num = 55;
+    num
+}",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::Integer(55),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![0]),
+                        make(OpCodeType::SetLocal, vec![0]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+fn() {
+    let a = 55;
+    let b = 77;
+    a + b
+}
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::Integer(55),
+                    TestCaseResult::Integer(77),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![0]),
+                        make(OpCodeType::SetLocal, vec![0]),
+                        make(OpCodeType::Constant, vec![1]),
+                        make(OpCodeType::SetLocal, vec![1]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::GetLocal, vec![1]),
+                        make(OpCodeType::Add, vec![]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn compiler_scopes_test() {
+        let mut compiler = Compiler::new();
+        assert_eq!(0, compiler.scope_index);
+
+        let global_scope = Rc::clone(&compiler.symbol_table);
+
+        assert!(compiler.emit(OpCodeType::Mul, vec![]).is_ok());
+        compiler.enter_scope();
+        assert_eq!(1, compiler.scope_index);
+
+        assert!(compiler.emit(OpCodeType::Sub, vec![]).is_ok());
+
+        assert!(compiler.scopes.get(compiler.scope_index).is_some());
+        assert_eq!(1, compiler.scopes[compiler.scope_index].instructions.len());
+
+        let last = compiler.scopes[compiler.scope_index]
+            .last_instruction
+            .as_ref();
+
+        assert!(last.is_some());
+        assert_eq!(OpCodeType::Sub, last.unwrap().op_code);
+
+        {
+            assert!(compiler.symbol_table.borrow().outer.is_some());
+            let symbol_table = compiler.symbol_table.borrow();
+
+            let outer = symbol_table.outer.as_ref().unwrap().borrow();
+            assert_eq!(outer.store, global_scope.borrow().store);
+            assert_eq!(outer.outer, global_scope.borrow().outer);
+            assert_eq!(outer.num_definitions, global_scope.borrow().num_definitions);
+        }
+
+        compiler.leave_scope();
+
+        assert_eq!(0, compiler.scope_index);
+
+        {
+            let symbol_table = compiler.symbol_table.borrow();
+
+            assert_eq!(symbol_table.store, global_scope.borrow().store);
+            assert_eq!(symbol_table.outer, global_scope.borrow().outer);
+            assert_eq!(
+                symbol_table.num_definitions,
+                global_scope.borrow().num_definitions
+            );
+            assert!(compiler.symbol_table.borrow().outer.is_none());
+        }
+
+        assert!(compiler.emit(OpCodeType::Add, vec![]).is_ok());
+        assert_eq!(2, compiler.scopes[compiler.scope_index].instructions.len());
+
+        let last = compiler.scopes[compiler.scope_index]
+            .last_instruction
+            .as_ref();
+
+        assert!(last.is_some());
+        assert_eq!(OpCodeType::Add, last.unwrap().op_code);
+
+        let prev = compiler.scopes[compiler.scope_index]
+            .prev_instruction
+            .as_ref();
+
+        assert!(prev.is_some());
+        assert_eq!(OpCodeType::Mul, prev.unwrap().op_code);
     }
 }
