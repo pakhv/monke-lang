@@ -15,12 +15,13 @@ const MAX_FRAMES: usize = 1024;
 #[derive(Debug, Clone)]
 struct Frame {
     func: CompiledFunction,
-    ip: isize
+    ip: isize,
+    base_pointer: usize
 }
 
 impl Frame {
-    fn new(func: CompiledFunction) -> Self {
-        Frame { ip: -1, func }
+    fn new(func: CompiledFunction, base_pointer: usize) -> Self {
+        Frame { ip: -1, func, base_pointer }
     }
 
     fn instructions(&self) -> &Instructions {
@@ -41,7 +42,7 @@ pub struct Vm {
 impl Vm {
     pub fn new(byte_code: ByteCode) -> Self {
         let mut frames = vec![None; MAX_FRAMES];
-        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions}));
+        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions, locals_num: 0 }, 0));
 
         Vm {
             constants: byte_code.constants,
@@ -55,7 +56,7 @@ impl Vm {
 
     pub fn new_with_global_store(byte_code: ByteCode, globals: Vec<Object>) -> Self {
         let mut frames = vec![None; MAX_FRAMES];
-        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions}));
+        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions, locals_num: 0 }, 0));
 
         Vm {
             constants: byte_code.constants,
@@ -211,24 +212,44 @@ impl Vm {
 
                     match obj {
                         Object::CompiledFunction(compiled_fn) => {
-                            let frame = Frame::new(compiled_fn.clone());
+                            let frame = Frame::new(compiled_fn.clone(), self.sp);
+
+                            let base_pointer = frame.base_pointer;
+                            let locals_num = compiled_fn.locals_num;
+
                             self.push_frame(frame);
+                            self.sp = base_pointer + locals_num;
                         }
                         actual => Err(format!("calling non-function, got \"{actual}\""))?
                     }
                 }
                 OpCodeType::ReturnValue => {
                     let return_value = self.pop()?;
-                    self.pop_frame()?;
-                    self.pop()?;
+                    let frame = self.pop_frame()?;
 
+                    self.sp = frame.base_pointer - 1;
                     self.push(return_value)?;
                 }
                 OpCodeType::Return => {
-                    self.pop_frame()?;
-                    self.pop()?;
+                    let frame = self.pop_frame()?;
+                    self.sp = frame.base_pointer - 1;
 
-                    self.push(Object::Null(Null {  }))?;
+                    self.push(Object::Null(Null { }))?;
+                }
+                OpCodeType::SetLocal => {
+                    let local_index = *ins.get(ip + 1).ok_or(format!(""))?;
+                    self.current_frame()?.ip += 1;
+
+                    let base_pointer = self.current_frame()?.base_pointer;
+                    self.stack[base_pointer + local_index as usize] = self.pop()?;
+                }
+                OpCodeType::GetLocal => {
+                    let local_index = *ins.get(ip + 1).ok_or(format!(""))?;
+                    self.current_frame()?.ip += 1;
+
+                    let base_pointer = self.current_frame()?.base_pointer;
+                    let local = self.stack.get(base_pointer + local_index as usize).ok_or(format!(""))?.clone();
+                    self.push(local)?;
                 }
                 _ => todo!(),
             }
@@ -979,11 +1000,82 @@ noReturnTwo();"
 
     #[test]
     fn first_class_function_test() {
-    let expected = vec![
+        let expected = vec![
             TestCase {
                 input: String::from("
 let returnsOne = fn() { 1; };
 let returnsOneReturner = fn() { returnsOne; };
+returnsOneReturner()();
+"),
+                expected: TestCaseResult::Integer(1),
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn calling_functions_with_bindings_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("
+let one = fn() { let one = 1; one };
+one();
+"),
+                expected: TestCaseResult::Integer(1),
+            },
+            TestCase {
+                input: String::from("
+let oneAndTwo = fn() { let one = 1; let two = 2; one + two; };
+oneAndTwo();
+"),
+                expected: TestCaseResult::Integer(3),
+            },
+            TestCase {
+                input: String::from("
+let oneAndTwo = fn() { let one = 1; let two = 2; one + two; };
+let threeAndFour = fn() { let three = 3; let four = 4; three + four; };
+oneAndTwo() + threeAndFour();
+"),
+                expected: TestCaseResult::Integer(10),
+            },
+            TestCase {
+                input: String::from("
+let firstFoobar = fn() { let foobar = 50; foobar; };
+let secondFoobar = fn() { let foobar = 100; foobar; };
+firstFoobar() + secondFoobar();
+"),
+                expected: TestCaseResult::Integer(150),
+            },
+            TestCase {
+                input: String::from("
+let globalSeed = 50;
+let minusOne = fn() {
+let num = 1;
+globalSeed - num;
+}
+let minusTwo = fn() {
+let num = 2;
+globalSeed - num;
+}
+minusOne() + minusTwo();
+"),
+                expected: TestCaseResult::Integer(97),
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn first_class_functions_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("
+let returnsOneReturner = fn() {
+let returnsOne = fn() { 1; };
+returnsOne;
+};
 returnsOneReturner()();
 "),
                 expected: TestCaseResult::Integer(1),

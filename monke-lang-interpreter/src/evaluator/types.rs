@@ -173,6 +173,7 @@ impl Hash for HashTable {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct CompiledFunction {
     pub instructions: Instructions,
+    pub locals_num: usize,
 }
 
 impl Display for CompiledFunction {

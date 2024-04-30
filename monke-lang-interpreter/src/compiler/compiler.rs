@@ -251,8 +251,12 @@ impl Compiler {
                         self.emit(OpCodeType::Return, vec![])?;
                     }
 
+                    let locals_num = self.symbol_table.borrow().definitions_num;
                     let instructions = self.leave_scope().ok_or(String::from(""))?;
-                    let compiled_fn = Object::CompiledFunction(CompiledFunction { instructions });
+                    let compiled_fn = Object::CompiledFunction(CompiledFunction {
+                        instructions,
+                        locals_num,
+                    });
 
                     let compiled_fn_const = self.add_constant(compiled_fn);
                     self.emit(OpCodeType::Constant, vec![compiled_fn_const as i32])?;
@@ -367,19 +371,19 @@ impl Compiler {
         Ok(())
     }
 
-    fn last_instructions_is_pop(&self) -> bool {
-        match self
-            .scopes
-            .get(self.scope_index)
-            .and_then(|scope| scope.last_instruction.as_ref())
-        {
-            Some(instruction) => match instruction.op_code {
-                OpCodeType::Pop => true,
-                _ => false,
-            },
-            None => false,
-        }
-    }
+    // fn last_instructions_is_pop(&self) -> bool {
+    //     match self
+    //         .scopes
+    //         .get(self.scope_index)
+    //         .and_then(|scope| scope.last_instruction.as_ref())
+    //     {
+    //         Some(instruction) => match instruction.op_code {
+    //             OpCodeType::Pop => true,
+    //             _ => false,
+    //         },
+    //         None => false,
+    //     }
+    // }
 
     fn remove_last_pop(&mut self) -> InterpreterResult<()> {
         match &self
@@ -1335,7 +1339,7 @@ fn() {
             let outer = symbol_table.outer.as_ref().unwrap().borrow();
             assert_eq!(outer.store, global_scope.borrow().store);
             assert_eq!(outer.outer, global_scope.borrow().outer);
-            assert_eq!(outer.num_definitions, global_scope.borrow().num_definitions);
+            assert_eq!(outer.definitions_num, global_scope.borrow().definitions_num);
         }
 
         compiler.leave_scope();
@@ -1348,8 +1352,8 @@ fn() {
             assert_eq!(symbol_table.store, global_scope.borrow().store);
             assert_eq!(symbol_table.outer, global_scope.borrow().outer);
             assert_eq!(
-                symbol_table.num_definitions,
-                global_scope.borrow().num_definitions
+                symbol_table.definitions_num,
+                global_scope.borrow().definitions_num
             );
             assert!(compiler.symbol_table.borrow().outer.is_none());
         }

@@ -17,7 +17,7 @@ pub struct Symbol {
 pub struct SymbolTable {
     pub store: HashMap<String, Symbol>,
     pub outer: Option<SymbolTableRef>,
-    pub num_definitions: usize,
+    pub definitions_num: usize,
 }
 
 pub type SymbolTableRef = Rc<RefCell<SymbolTable>>;
@@ -38,14 +38,14 @@ impl SymbolTable {
         Rc::new(RefCell::new(Self {
             store: HashMap::new(),
             outer: None,
-            num_definitions: 0,
+            definitions_num: 0,
         }))
     }
 
     pub fn define(&mut self, name: String) -> Symbol {
         let symbol = Symbol {
             name: name.clone(),
-            index: self.num_definitions,
+            index: self.definitions_num,
             scope: match self.outer {
                 Some(_) => SymbolScope::Local,
                 None => SymbolScope::Global,
@@ -53,7 +53,7 @@ impl SymbolTable {
         };
 
         self.store.insert(name, symbol.clone());
-        self.num_definitions += 1;
+        self.definitions_num += 1;
 
         symbol
     }
