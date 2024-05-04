@@ -208,6 +208,7 @@ impl Vm {
                     self.execute_index_expression(left, index)?;
                 }
                 OpCodeType::Call => {
+                    self.current_frame()?.ip += 1;
                     let obj = self.stack.get(self.sp - 1).ok_or(format!(""))?;
 
                     match obj {

@@ -241,6 +241,13 @@ impl Compiler {
                 }
                 Expression::FunctionLiteral(func) => {
                     self.enter_scope();
+
+                    for param in &func.parameters {
+                        self.symbol_table
+                            .borrow_mut()
+                            .define(param.token.to_string());
+                    }
+
                     self.compile(Rc::clone(&func.body).into())?;
 
                     if self.last_instruction_is(OpCodeType::Pop) {
@@ -265,7 +272,12 @@ impl Compiler {
                 }
                 Expression::Call(call) => {
                     self.compile(Rc::clone(&call.function).into())?;
-                    self.emit(OpCodeType::Call, vec![])?;
+
+                    for arg in &call.arguments {
+                        self.compile(Rc::clone(arg).into())?;
+                    }
+
+                    self.emit(OpCodeType::Call, vec![call.arguments.len() as i32])?;
 
                     Ok(())
                 }
@@ -1201,7 +1213,7 @@ two;
                 ],
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![1]),
-                    make(OpCodeType::Call, vec![]),
+                    make(OpCodeType::Call, vec![0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
@@ -1221,7 +1233,105 @@ noArg();",
                     make(OpCodeType::Constant, vec![1]),
                     make(OpCodeType::SetGlobal, vec![0]),
                     make(OpCodeType::GetGlobal, vec![0]),
-                    make(OpCodeType::Call, vec![]),
+                    make(OpCodeType::Call, vec![0]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+let oneArg = fn(a) { };
+oneArg(24);
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::InstructionsVec(vec![make(OpCodeType::Return, vec![])]),
+                    TestCaseResult::Integer(24),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::GetGlobal, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Call, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+let manyArg = fn(a, b, c) { };
+manyArg(24, 25, 26);
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::InstructionsVec(vec![make(OpCodeType::Return, vec![])]),
+                    TestCaseResult::Integer(24),
+                    TestCaseResult::Integer(25),
+                    TestCaseResult::Integer(26),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::GetGlobal, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Constant, vec![3]),
+                    make(OpCodeType::Call, vec![3]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+let oneArg = fn(a) { a };
+oneArg(24);
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                    TestCaseResult::Integer(24),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::GetGlobal, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Call, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+let manyArg = fn(a, b, c) { a; b; c };
+manyArg(24, 25, 26);
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Pop, vec![]),
+                        make(OpCodeType::GetLocal, vec![1]),
+                        make(OpCodeType::Pop, vec![]),
+                        make(OpCodeType::GetLocal, vec![2]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                    TestCaseResult::Integer(24),
+                    TestCaseResult::Integer(25),
+                    TestCaseResult::Integer(26),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::GetGlobal, vec![0]),
+                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Constant, vec![3]),
+                    make(OpCodeType::Call, vec![3]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },

@@ -230,7 +230,7 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::Array => vec![2],
         OpCodeType::Hash => vec![2],
         OpCodeType::Index => vec![],
-        OpCodeType::Call => vec![],
+        OpCodeType::Call => vec![1],
         OpCodeType::ReturnValue => vec![],
         OpCodeType::Return => vec![],
         OpCodeType::GetLocal => vec![1],
