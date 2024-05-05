@@ -53,7 +53,7 @@ fn main() -> Result<()> {
 
         symbols_table = compiler.symbol_table.clone();
 
-        let byte_code = compiler.byte_code();
+        let byte_code = compiler.byte_code().unwrap();
         constants = byte_code.constants.clone();
 
         let mut vm = Vm::new_with_global_store(byte_code, globals.clone());

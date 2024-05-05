@@ -263,6 +263,7 @@ impl Compiler {
                     let compiled_fn = Object::CompiledFunction(CompiledFunction {
                         instructions,
                         locals_num,
+                        parameters_num: func.parameters.len(),
                     });
 
                     let compiled_fn_const = self.add_constant(compiled_fn);

@@ -34,7 +34,7 @@ pub struct Vm {
     constants: Vec<Object>,
     stack: Vec<Object>,
     sp: usize,
-    globals: Vec<Object>,
+    pub globals: Vec<Object>,
     frames: Vec<Option<Frame>>,
     frames_index: usize
 }
@@ -42,7 +42,7 @@ pub struct Vm {
 impl Vm {
     pub fn new(byte_code: ByteCode) -> Self {
         let mut frames = vec![None; MAX_FRAMES];
-        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions, locals_num: 0 }, 0));
+        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions, locals_num: 0, parameters_num: 0 }, 0));
 
         Vm {
             constants: byte_code.constants,
@@ -56,7 +56,7 @@ impl Vm {
 
     pub fn new_with_global_store(byte_code: ByteCode, globals: Vec<Object>) -> Self {
         let mut frames = vec![None; MAX_FRAMES];
-        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions, locals_num: 0 }, 0));
+        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions, locals_num: 0, parameters_num: 0 }, 0));
 
         Vm {
             constants: byte_code.constants,
@@ -75,7 +75,7 @@ impl Vm {
     pub fn run(&mut self) -> InterpreterResult<()> {
         let mut ip;
 
-        while self.current_frame().is_ok_and(|f| f.ip < (f.instructions().len() - 1) as isize) {
+        while self.current_frame().is_ok_and(|f| f.instructions().len() > 0 && f.ip < (f.instructions().len() - 1) as isize) {
             self.current_frame()?.ip += 1;
             ip = self.current_frame()?.ip as usize;
             let ins = self.current_frame()?.instructions();
@@ -208,21 +208,10 @@ impl Vm {
                     self.execute_index_expression(left, index)?;
                 }
                 OpCodeType::Call => {
+                    let args_num = *ins.get(ip + 1).ok_or(format!(""))?;
+
                     self.current_frame()?.ip += 1;
-                    let obj = self.stack.get(self.sp - 1).ok_or(format!(""))?;
-
-                    match obj {
-                        Object::CompiledFunction(compiled_fn) => {
-                            let frame = Frame::new(compiled_fn.clone(), self.sp);
-
-                            let base_pointer = frame.base_pointer;
-                            let locals_num = compiled_fn.locals_num;
-
-                            self.push_frame(frame);
-                            self.sp = base_pointer + locals_num;
-                        }
-                        actual => Err(format!("calling non-function, got \"{actual}\""))?
-                    }
+                    self.call_function(args_num as usize)?;
                 }
                 OpCodeType::ReturnValue => {
                     let return_value = self.pop()?;
@@ -447,6 +436,27 @@ impl Vm {
             .ok_or(format!("couldn't pop frame, frames stack is empty"))?
             .clone()
             .ok_or(format!("couldn't pop frame, frames stack is empty"))
+    }
+
+    fn call_function(&mut self, args_num: usize) -> InterpreterResult<()> {
+        let obj = self.stack.get(self.sp - 1 - args_num as usize).ok_or(format!(""))?;
+
+        match obj {
+            Object::CompiledFunction(compiled_fn) => {
+                if args_num != compiled_fn.parameters_num {
+                    return Err(format!("wrong number of arguments: want={}, got={}", compiled_fn.parameters_num, args_num));
+                }
+                let frame = Frame::new(compiled_fn.clone(), self.sp - args_num);
+
+                let base_pointer = frame.base_pointer;
+                let locals_num = compiled_fn.locals_num;
+
+                self.push_frame(frame);
+                self.sp = base_pointer + locals_num;
+                Ok(())
+            }
+            actual => Err(format!("calling non-function, got \"{actual}\""))?
+        }
     }
 }
 
@@ -1084,5 +1094,110 @@ returnsOneReturner()();
         ];
 
         run_vm_tests(expected);
+    }
+
+    #[test]
+    fn calling_functions_with_arguments_and_bindings_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("
+let identity = fn(a) { a; };
+identity(4);
+"),
+                expected: TestCaseResult::Integer(4),
+            },
+            TestCase {
+                input: String::from("
+let sum = fn(a, b) { a + b; };
+sum(1, 2);
+"),
+                expected: TestCaseResult::Integer(3),
+            },
+            TestCase {
+                input: String::from("
+let sum = fn(a, b) {
+let c = a + b;
+c;
+};
+sum(1, 2);
+"),
+                expected: TestCaseResult::Integer(3),
+            },
+            TestCase {
+                input: String::from("
+let sum = fn(a, b) {
+let c = a + b;
+c;
+};
+sum(1, 2) + sum(3, 4);
+"),
+                expected: TestCaseResult::Integer(10),
+            },
+            TestCase {
+                input: String::from("
+let sum = fn(a, b) {
+let c = a + b;
+c;
+};
+let outer = fn() {
+sum(1, 2) + sum(3, 4);
+};
+outer();
+"),
+                expected: TestCaseResult::Integer(10),
+            },
+            TestCase {
+                input: String::from("
+let globalNum = 10;
+let sum = fn(a, b) {
+let c = a + b;
+c + globalNum;
+};
+let outer = fn() {
+sum(1, 2) + sum(3, 4) + globalNum;
+};
+outer() + globalNum;
+"),
+                expected: TestCaseResult::Integer(50),
+            },
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn calling_functions_with_wrong_arguments_test() {
+        let expected = vec![
+            ("fn() { 1; }(1);", "wrong number of arguments: want=0, got=1"),
+            ("fn(a) { a; }();", "wrong number of arguments: want=1, got=0"),
+            ("fn(a, b) { a + b; }(1);", "wrong number of arguments: want=2, got=1")
+        ];
+
+        for (input, expected_result) in expected {
+            let lexer = Lexer::new(input.to_string());
+            let mut parser = Parser::new(lexer);
+
+            let program = parser.parse_program();
+
+            if let Err(err) = &program {
+                panic!("{err}");
+            }
+
+            let program = program.unwrap();
+
+            let mut compiler = Compiler::new();
+
+            if let Err(err) = compiler.compile(program) {
+                panic!("{err}");
+            }
+
+            let byte_code = compiler.byte_code();
+            assert!(byte_code.is_ok());
+
+            let byte_code = byte_code.unwrap();
+            let mut vm = Vm::new(byte_code);
+
+            assert!(vm.run().is_err_and(|err| err == expected_result));
+        }
     }
 }

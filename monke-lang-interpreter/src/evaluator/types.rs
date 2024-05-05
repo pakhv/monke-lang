@@ -174,6 +174,7 @@ impl Hash for HashTable {
 pub struct CompiledFunction {
     pub instructions: Instructions,
     pub locals_num: usize,
+    pub parameters_num: usize,
 }
 
 impl Display for CompiledFunction {
