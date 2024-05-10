@@ -1,5 +1,5 @@
-use super::types::Object;
 use crate::parser::ast::Program;
+use crate::types::Object;
 use std::{cell::RefCell, rc::Rc};
 
 pub type AstTraverseNodeRef = Rc<RefCell<AstTraverseNode>>;

@@ -2,10 +2,10 @@ use std::rc::Rc;
 
 use crate::{
     code::code::{make, Instructions, OpCodeType},
-    evaluator::types::{CompiledFunction, Integer, Object, Str},
     lexer::token::Token,
     parser::ast::{Expression, Program, Statement},
-    result::InterpreterResult,
+    result::MonkeyResult,
+    types::{CompiledFunction, Integer, Object, Str},
 };
 
 use super::symbol_table::{SymbolScope, SymbolTable, SymbolTableRef};
@@ -70,7 +70,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self, program: Program) -> InterpreterResult<()> {
+    pub fn compile(&mut self, program: Program) -> MonkeyResult<()> {
         match program {
             Program::Statements(statements) => {
                 for statement in statements {
@@ -326,7 +326,7 @@ impl Compiler {
         }
     }
 
-    pub fn byte_code(&self) -> InterpreterResult<ByteCode> {
+    pub fn byte_code(&self) -> MonkeyResult<ByteCode> {
         Ok(ByteCode {
             constants: self.constants.clone(),
             instructions: self.current_instructions().ok_or(String::from(""))?,
@@ -338,7 +338,7 @@ impl Compiler {
         self.constants.len() - 1
     }
 
-    fn emit(&mut self, op: OpCodeType, operands: Vec<i32>) -> InterpreterResult<usize> {
+    fn emit(&mut self, op: OpCodeType, operands: Vec<i32>) -> MonkeyResult<usize> {
         let instructions = make(op.clone(), operands);
         let pos = self.add_instructions(instructions)?;
 
@@ -347,7 +347,7 @@ impl Compiler {
         Ok(pos)
     }
 
-    fn add_instructions(&mut self, instructions: Instructions) -> InterpreterResult<usize> {
+    fn add_instructions(&mut self, instructions: Instructions) -> MonkeyResult<usize> {
         let cur_instructions = self
             .current_instructions()
             .ok_or(String::from("couldn't get current instructions"))?;
@@ -365,7 +365,7 @@ impl Compiler {
             .and_then(|scope| Some(scope.instructions.clone()))
     }
 
-    fn set_last_instructions(&mut self, op: OpCodeType, pos: usize) -> InterpreterResult<()> {
+    fn set_last_instructions(&mut self, op: OpCodeType, pos: usize) -> MonkeyResult<()> {
         let prev = self
             .scopes
             .get(self.scope_index)
@@ -398,7 +398,7 @@ impl Compiler {
     //     }
     // }
 
-    fn remove_last_pop(&mut self) -> InterpreterResult<()> {
+    fn remove_last_pop(&mut self) -> MonkeyResult<()> {
         match &self
             .scopes
             .get(self.scope_index)
@@ -426,7 +426,7 @@ impl Compiler {
         &mut self,
         pos: usize,
         new_instructions: Instructions,
-    ) -> InterpreterResult<()> {
+    ) -> MonkeyResult<()> {
         for idx in 0..new_instructions.len() {
             match (
                 self.scopes
@@ -446,7 +446,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn change_operand(&mut self, pos: usize, operand: i32) -> InterpreterResult<()> {
+    fn change_operand(&mut self, pos: usize, operand: i32) -> MonkeyResult<()> {
         let cur_instructions = self.current_instructions();
 
         if let None = cur_instructions {
@@ -509,7 +509,7 @@ impl Compiler {
         }
     }
 
-    fn replace_last_pop_with_return(&mut self) -> InterpreterResult<()> {
+    fn replace_last_pop_with_return(&mut self) -> MonkeyResult<()> {
         let mut last_instructions = self
             .scopes
             .get(self.scope_index)
@@ -537,9 +537,9 @@ mod test {
     use crate::{
         code::code::{make, Instructions, OpCodeType},
         compiler::compiler::Compiler,
-        evaluator::types::Object,
         lexer::lexer::Lexer,
         parser::parser::Parser,
+        types::Object,
     };
 
     use super::ByteCode;

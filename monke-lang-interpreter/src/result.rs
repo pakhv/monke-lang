@@ -1,3 +1,3 @@
 use std::result;
 
-pub type InterpreterResult<T> = result::Result<T, String>;
+pub type MonkeyResult<T> = result::Result<T, String>;

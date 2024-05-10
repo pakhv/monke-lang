@@ -1,12 +1,11 @@
+use crate::evaluator::environment::OuterEnvWrapper;
 use std::{collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 use crate::{
     code::code::Instructions,
     parser::ast::{Identifier, Statement},
-    result::InterpreterResult,
+    result::MonkeyResult,
 };
-
-use super::environment::OuterEnvWrapper;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Object {
@@ -114,7 +113,7 @@ impl Display for Str {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct BuiltinFunction(pub fn(args: Vec<Object>) -> InterpreterResult<Object>);
+pub struct BuiltinFunction(pub fn(args: Vec<Object>) -> MonkeyResult<Object>);
 
 impl Display for BuiltinFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

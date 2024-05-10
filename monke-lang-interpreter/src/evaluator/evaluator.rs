@@ -6,18 +6,18 @@ use crate::{
         CallExpression, Expression, HashLiteral, IfExpression, IndexExpression, InfixExpression,
         Program, Statement,
     },
-    result::InterpreterResult,
-};
-
-use super::{
-    ast_traversal::{AstTraverse, AstTraverseNodeRef},
-    environment::{Environment, EnvironmentRef, OuterEnvWrapper},
+    result::MonkeyResult,
     types::{
         Array, Boolean, BuiltinFunction, Function, HashTable, Integer, Null, Object, Return, Str,
     },
 };
 
-pub fn eval(program: Program, env: &EnvironmentRef) -> InterpreterResult<Object> {
+use super::{
+    ast_traversal::{AstTraverse, AstTraverseNodeRef},
+    environment::{Environment, EnvironmentRef, OuterEnvWrapper},
+};
+
+pub fn eval(program: Program, env: &EnvironmentRef) -> MonkeyResult<Object> {
     let mut nodes_stack = vec![AstTraverse::new(program, None)];
     let mut env_stack = vec![Rc::clone(env)];
 
@@ -60,7 +60,7 @@ fn eval_ast_node(
     cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
     env_stack: &mut Vec<EnvironmentRef>,
-) -> InterpreterResult<Option<Object>> {
+) -> MonkeyResult<Option<Object>> {
     let env = env_stack.last().unwrap();
 
     match &cur_node.as_ref().borrow().node {
@@ -187,7 +187,7 @@ fn eval_hash_literal(
     hash_literal: &HashLiteral,
     cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
-) -> InterpreterResult<Option<Object>> {
+) -> MonkeyResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
         l if l < 2 * hash_literal.pairs.len() && l & 0x1 == 0 => {
             let (key, _) = hash_literal
@@ -250,7 +250,7 @@ fn eval_index_expression(
     index_expr: &IndexExpression,
     cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
-) -> InterpreterResult<Option<Object>> {
+) -> MonkeyResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
         0 => {
             add_current_and_new_nodes_to_stack(
@@ -325,7 +325,7 @@ fn eval_infix_expression(
     infix: &InfixExpression,
     cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
-) -> InterpreterResult<Option<Object>> {
+) -> MonkeyResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
         0 => {
             add_current_and_new_nodes_to_stack(
@@ -370,7 +370,7 @@ fn apply_function(
     cur_node: &AstTraverseNodeRef,
     nodes_stack: &mut Vec<AstTraverse>,
     env_stack: &mut Vec<EnvironmentRef>,
-) -> InterpreterResult<Option<Object>> {
+) -> MonkeyResult<Option<Object>> {
     match cur_node.borrow().evaluated_children.len() {
         0 => {
             add_current_and_new_nodes_to_stack(
@@ -441,7 +441,7 @@ fn extend_function_environment(func: Function, args: Vec<Object>) -> Environment
     Rc::new(RefCell::new(env))
 }
 
-fn eval_prefix_expression(token: &Token, right: &Object) -> InterpreterResult<Object> {
+fn eval_prefix_expression(token: &Token, right: &Object) -> MonkeyResult<Object> {
     match token {
         Token::Bang => match right {
             Object::Boolean(bool) => Ok(Object::Boolean(Boolean { value: !bool.value })),
@@ -460,11 +460,7 @@ fn eval_prefix_expression(token: &Token, right: &Object) -> InterpreterResult<Ob
     }
 }
 
-fn calculate_infix_expression(
-    token: &Token,
-    left: Object,
-    right: Object,
-) -> InterpreterResult<Object> {
+fn calculate_infix_expression(token: &Token, left: Object, right: Object) -> MonkeyResult<Object> {
     match (left, right) {
         (Object::Integer(int_left), Object::Integer(int_right)) => match token {
             Token::Plus => Ok(Object::Integer(Integer {
@@ -640,7 +636,7 @@ fn get_builtin_function(fn_name: &str) -> Option<Object> {
     }
 }
 
-fn len_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+fn len_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
     if args.len() != 1 {
         return Err(format!(
             "wrong number of arguments for len function, 1 argument expected, but got {}",
@@ -661,7 +657,7 @@ fn len_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
     }
 }
 
-fn first_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+fn first_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
     if args.len() != 1 {
         return Err(format!(
             "wrong number of arguments for first function, 1 argument expected, but got {}",
@@ -680,7 +676,7 @@ fn first_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
     }
 }
 
-fn last_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+fn last_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
     if args.len() != 1 {
         return Err(format!(
             "wrong number of arguments for last function, 1 argument expected, but got {}",
@@ -703,7 +699,7 @@ fn last_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
     }
 }
 
-fn rest_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+fn rest_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
     if args.len() != 1 {
         return Err(format!(
             "wrong number of arguments for rest function, 1 argument expected, but got {}",
@@ -724,7 +720,7 @@ fn rest_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
     }
 }
 
-fn push_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+fn push_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
     if args.len() != 2 {
         return Err(format!(
             "wrong number of arguments for push function, 2 argument expected, but got {}",
@@ -747,7 +743,7 @@ fn push_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
     }
 }
 
-fn puts_builtin(args: Vec<Object>) -> InterpreterResult<Object> {
+fn puts_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
     for arg in args {
         println!("{arg}");
     }
@@ -760,13 +756,10 @@ mod test {
     use std::{cell::RefCell, rc::Rc};
 
     use crate::{
-        evaluator::{
-            environment::Environment,
-            evaluator::eval,
-            types::{Boolean, Integer, Null, Object, Str},
-        },
+        evaluator::{environment::Environment, evaluator::eval},
         lexer::lexer::Lexer,
         parser::parser::Parser,
+        types::{Boolean, Integer, Null, Object, Str},
     };
 
     fn evaluate_input(input: String) -> Object {

@@ -4,8 +4,7 @@ use std::{collections::HashMap, usize};
 use crate::{
     code::code::{read_u16, Instructions, OpCodeType},
     compiler::compiler::ByteCode,
-    evaluator::types::{Array, Boolean, CompiledFunction, HashTable, Integer, Null, Object, Str},
-    result::InterpreterResult,
+    result::MonkeyResult, types::{Array, Boolean, CompiledFunction, HashTable, Integer, Null, Object, Str},
 };
 
 const STACK_SIZE: usize = 2048;
@@ -72,7 +71,7 @@ impl Vm {
         self.stack.get(self.sp - 1)
     }
 
-    pub fn run(&mut self) -> InterpreterResult<()> {
+    pub fn run(&mut self) -> MonkeyResult<()> {
         let mut ip;
 
         while self.current_frame().is_ok_and(|f| f.instructions().len() > 0 && f.ip < (f.instructions().len() - 1) as isize) {
@@ -248,7 +247,7 @@ impl Vm {
         Ok(())
     }
 
-    pub fn last_popped_stack_elem(&self) -> InterpreterResult<Object> {
+    pub fn last_popped_stack_elem(&self) -> MonkeyResult<Object> {
         Ok(self
             .stack
             .get(self.sp)
@@ -258,7 +257,7 @@ impl Vm {
             .clone())
     }
 
-    fn push(&mut self, object: Object) -> InterpreterResult<()> {
+    fn push(&mut self, object: Object) -> MonkeyResult<()> {
         if self.sp >= STACK_SIZE {
             return Err(String::from("stack overflow"));
         }
@@ -269,7 +268,7 @@ impl Vm {
         Ok(())
     }
 
-    fn pop(&mut self) -> InterpreterResult<Object> {
+    fn pop(&mut self) -> MonkeyResult<Object> {
         self.sp -= 1;
 
         Ok(self
@@ -281,7 +280,7 @@ impl Vm {
             .clone())
     }
 
-    fn execute_binary_operation(&mut self, op: OpCodeType) -> InterpreterResult<()> {
+    fn execute_binary_operation(&mut self, op: OpCodeType) -> MonkeyResult<()> {
         let right = self.pop()?;
         let left = self.pop()?;
 
@@ -317,7 +316,7 @@ impl Vm {
         }
     }
 
-    fn execute_comparison(&mut self, op: OpCodeType) -> InterpreterResult<()> {
+    fn execute_comparison(&mut self, op: OpCodeType) -> MonkeyResult<()> {
         let right = self.pop()?;
         let left = self.pop()?;
 
@@ -364,7 +363,7 @@ impl Vm {
         }
     }
 
-    fn build_array(&self, start_idx: usize, end_idx: usize) -> InterpreterResult<Object> {
+    fn build_array(&self, start_idx: usize, end_idx: usize) -> MonkeyResult<Object> {
         let elements = Vec::from(
             self.stack
                 .get(start_idx..end_idx)
@@ -374,7 +373,7 @@ impl Vm {
         Ok(Object::Array(Array { elements }))
     }
 
-    fn build_hash(&self, hash_len: usize) -> InterpreterResult<Object> {
+    fn build_hash(&self, hash_len: usize) -> MonkeyResult<Object> {
         let start_idx = self.sp - hash_len;
         let pair_count = hash_len / 2;
 
@@ -396,7 +395,7 @@ impl Vm {
         Ok(Object::HashTable(HashTable { pairs }))
     }
 
-    fn execute_index_expression(&mut self, left: Object, index: Object) -> InterpreterResult<()> {
+    fn execute_index_expression(&mut self, left: Object, index: Object) -> MonkeyResult<()> {
         match (left, &index) {
             (Object::Array(array), Object::Integer(idx)) => {
                 match array.elements.get(idx.value as usize) {
@@ -416,7 +415,7 @@ impl Vm {
         }
     }
 
-    fn current_frame(&mut self) -> InterpreterResult<&mut Frame> {
+    fn current_frame(&mut self) -> MonkeyResult<&mut Frame> {
         self.frames
             .get_mut(self.frames_index - 1)
             .ok_or(String::from("couldn't get current frame"))?
@@ -429,7 +428,7 @@ impl Vm {
         self.frames_index +=1;
     }
 
-    fn pop_frame(&mut self) -> InterpreterResult<Frame> {
+    fn pop_frame(&mut self) -> MonkeyResult<Frame> {
         self.frames_index -= 1;
         self.frames
             .get(self.frames_index)
@@ -438,7 +437,7 @@ impl Vm {
             .ok_or(format!("couldn't pop frame, frames stack is empty"))
     }
 
-    fn call_function(&mut self, args_num: usize) -> InterpreterResult<()> {
+    fn call_function(&mut self, args_num: usize) -> MonkeyResult<()> {
         let obj = self.stack.get(self.sp - 1 - args_num as usize).ok_or(format!(""))?;
 
         match obj {
@@ -466,8 +465,8 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        compiler::compiler::Compiler, evaluator::types::Object, lexer::lexer::Lexer,
-        parser::parser::Parser,
+        compiler::compiler::Compiler, lexer::lexer::Lexer,
+        parser::parser::Parser, types::Object,
     };
 
     use super::*;

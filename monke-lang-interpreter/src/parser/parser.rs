@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use super::super::result::InterpreterResult;
+use super::super::result::MonkeyResult;
 use super::ast::{
     ArrayLiteral, BlockStatement, Boolean, CallExpression, Expression, FunctionLiteral,
     HashLiteral, Identifier, IfExpression, IndexExpression, InfixExpression, IntegerLiteral,
@@ -17,8 +17,8 @@ pub struct Parser {
     peek_token: Option<Token>,
 }
 
-type ParsePrefixFn = fn(&mut Parser) -> InterpreterResult<Expression>;
-type ParseInfixFn = fn(&mut Parser, Expression) -> InterpreterResult<Expression>;
+type ParsePrefixFn = fn(&mut Parser) -> MonkeyResult<Expression>;
+type ParseInfixFn = fn(&mut Parser, Expression) -> MonkeyResult<Expression>;
 
 impl Parser {
     pub fn new(mut lexer: Lexer) -> Self {
@@ -32,7 +32,7 @@ impl Parser {
         }
     }
 
-    pub fn parse_program(&mut self) -> InterpreterResult<Program> {
+    pub fn parse_program(&mut self) -> MonkeyResult<Program> {
         let mut statements = vec![];
 
         while self.cur_token.is_some() {
@@ -45,7 +45,7 @@ impl Parser {
         Ok(Program::Statements(statements))
     }
 
-    fn parse_statement(&mut self) -> InterpreterResult<Statement> {
+    fn parse_statement(&mut self) -> MonkeyResult<Statement> {
         match &self.cur_token {
             Some(token) => match token {
                 Token::Let => Ok(self.parse_let_statement()?),
@@ -63,7 +63,7 @@ impl Parser {
         self.peek_token = self.lexer.next_token();
     }
 
-    fn parse_let_statement(&mut self) -> InterpreterResult<Statement> {
+    fn parse_let_statement(&mut self) -> MonkeyResult<Statement> {
         if !self.expect_peek(Token::Ident(String::new())) {
             return Err(String::from(
                 "unable to parse let statement, identifier expected",
@@ -99,7 +99,7 @@ impl Parser {
         }))
     }
 
-    fn parse_return_statement(&mut self) -> InterpreterResult<Statement> {
+    fn parse_return_statement(&mut self) -> MonkeyResult<Statement> {
         let token = self.cur_token.clone().unwrap();
 
         self.next_token();
@@ -120,7 +120,7 @@ impl Parser {
         }))
     }
 
-    fn parse_expression_statement(&mut self) -> InterpreterResult<Statement> {
+    fn parse_expression_statement(&mut self) -> MonkeyResult<Statement> {
         let cur_token = self.cur_token.clone().unwrap();
         let statement_expression = Rc::new(self.parse_expression(ExpressionType::Lowest as usize)?);
 
@@ -138,7 +138,7 @@ impl Parser {
         }))
     }
 
-    fn parse_block_statement(&mut self) -> InterpreterResult<Statement> {
+    fn parse_block_statement(&mut self) -> MonkeyResult<Statement> {
         let token = self.cur_token.clone().unwrap();
         let mut statements = vec![];
 
@@ -152,7 +152,7 @@ impl Parser {
         Ok(Statement::Block(BlockStatement { token, statements }))
     }
 
-    fn parse_expression(&mut self, precedence: usize) -> InterpreterResult<Expression> {
+    fn parse_expression(&mut self, precedence: usize) -> MonkeyResult<Expression> {
         let prefix_fn = self.get_prefix_fn()?;
         let mut left = prefix_fn(self)?;
 
@@ -187,7 +187,7 @@ impl Parser {
         }
     }
 
-    fn get_prefix_fn(&self) -> InterpreterResult<ParsePrefixFn> {
+    fn get_prefix_fn(&self) -> MonkeyResult<ParsePrefixFn> {
         match &self.cur_token {
             Some(t) => match t {
                 Token::Ident(_) => Ok(Self::parse_identifier),
@@ -210,7 +210,7 @@ impl Parser {
         }
     }
 
-    fn get_infix_fn(&self) -> InterpreterResult<ParseInfixFn> {
+    fn get_infix_fn(&self) -> MonkeyResult<ParseInfixFn> {
         match &self.peek_token {
             Some(t) => match t {
                 Token::Plus => Ok(Self::parse_infix_expression),
@@ -231,13 +231,13 @@ impl Parser {
         }
     }
 
-    fn parse_identifier(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_identifier(parser: &mut Parser) -> MonkeyResult<Expression> {
         Ok(Expression::Identifier(Identifier {
             token: parser.cur_token.clone().unwrap(),
         }))
     }
 
-    fn parse_integer_literal(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_integer_literal(parser: &mut Parser) -> MonkeyResult<Expression> {
         let token = parser.cur_token.clone().unwrap();
 
         let value = if let Token::Int(ref number_str) = token {
@@ -253,7 +253,7 @@ impl Parser {
         Ok(Expression::IntegerLiteral(IntegerLiteral { token, value }))
     }
 
-    fn parse_prefix_expression(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_prefix_expression(parser: &mut Parser) -> MonkeyResult<Expression> {
         let token = parser.cur_token.clone().unwrap();
         parser.next_token();
         let right = Rc::new(parser.parse_expression(ExpressionType::Prefix as usize)?);
@@ -261,10 +261,7 @@ impl Parser {
         Ok(Expression::Prefix(PrefixExpression { token, right }))
     }
 
-    fn parse_infix_expression(
-        parser: &mut Parser,
-        left: Expression,
-    ) -> InterpreterResult<Expression> {
+    fn parse_infix_expression(parser: &mut Parser, left: Expression) -> MonkeyResult<Expression> {
         let cur_token = parser.cur_token.clone();
         let cur_precedence = get_precedence(&cur_token);
 
@@ -278,7 +275,7 @@ impl Parser {
         }))
     }
 
-    fn parse_boolean(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_boolean(parser: &mut Parser) -> MonkeyResult<Expression> {
         let cur_token = parser.cur_token.clone().unwrap();
         let is_true = cur_token == Token::True;
 
@@ -288,7 +285,7 @@ impl Parser {
         }))
     }
 
-    fn parse_grouped_expression(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_grouped_expression(parser: &mut Parser) -> MonkeyResult<Expression> {
         parser.next_token();
         let expr = parser.parse_expression(ExpressionType::Lowest as usize)?;
 
@@ -301,7 +298,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_if_expression(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_if_expression(parser: &mut Parser) -> MonkeyResult<Expression> {
         let token = parser.cur_token.clone().unwrap();
 
         if !parser.expect_peek(Token::Lparen) {
@@ -353,7 +350,7 @@ impl Parser {
         }))
     }
 
-    fn parse_function_literal(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_function_literal(parser: &mut Parser) -> MonkeyResult<Expression> {
         let token = parser.cur_token.clone().unwrap();
 
         if !parser.expect_peek(Token::Lparen) {
@@ -379,7 +376,7 @@ impl Parser {
         }))
     }
 
-    fn parse_function_parameters(&mut self) -> InterpreterResult<Vec<Identifier>> {
+    fn parse_function_parameters(&mut self) -> MonkeyResult<Vec<Identifier>> {
         let mut identifiers = vec![];
 
         if self
@@ -430,7 +427,7 @@ impl Parser {
     fn parse_call_expression(
         parser: &mut Parser,
         function: Expression,
-    ) -> InterpreterResult<Expression> {
+    ) -> MonkeyResult<Expression> {
         let token = parser.cur_token.clone().unwrap();
         let arguments = parser.parse_expression_list(Token::Rparen)?;
 
@@ -441,7 +438,7 @@ impl Parser {
         }))
     }
 
-    fn parse_expression_list(&mut self, end: Token) -> InterpreterResult<Vec<Rc<Expression>>> {
+    fn parse_expression_list(&mut self, end: Token) -> MonkeyResult<Vec<Rc<Expression>>> {
         let mut arguments = vec![];
 
         if self.peek_token.as_ref().is_some_and(|t| t == &end) {
@@ -472,23 +469,20 @@ impl Parser {
         Ok(arguments)
     }
 
-    fn parse_string(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_string(parser: &mut Parser) -> MonkeyResult<Expression> {
         Ok(Expression::StringLiteral(StringLiteral {
             token: parser.cur_token.clone().unwrap(),
         }))
     }
 
-    fn parse_array_literal(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_array_literal(parser: &mut Parser) -> MonkeyResult<Expression> {
         Ok(Expression::ArrayLiteral(ArrayLiteral {
             token: parser.cur_token.clone().unwrap(),
             elements: parser.parse_expression_list(Token::Rbracket)?,
         }))
     }
 
-    fn parse_index_expression(
-        parser: &mut Parser,
-        left: Expression,
-    ) -> InterpreterResult<Expression> {
+    fn parse_index_expression(parser: &mut Parser, left: Expression) -> MonkeyResult<Expression> {
         let token = parser.cur_token.clone().unwrap();
 
         parser.next_token();
@@ -507,7 +501,7 @@ impl Parser {
         }))
     }
 
-    fn parse_hash_literal(parser: &mut Parser) -> InterpreterResult<Expression> {
+    fn parse_hash_literal(parser: &mut Parser) -> MonkeyResult<Expression> {
         let token = parser.cur_token.clone().unwrap();
         let mut pairs = HashMap::new();
 
