@@ -1,9 +1,12 @@
 use std::{cell::RefCell, collections::HashMap, ops::Deref, rc::Rc};
 
+use crate::builtins::BUILTINS;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum SymbolScope {
     Global,
     Local,
+    Builtin,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -75,6 +78,23 @@ impl SymbolTable {
         new_table.borrow_mut().outer = Some(outer);
 
         new_table
+    }
+
+    pub fn define_builtin(&mut self, index: usize, name: String) -> Symbol {
+        let symbol = Symbol {
+            index,
+            name: name.clone(),
+            scope: SymbolScope::Builtin,
+        };
+
+        self.store.insert(name, symbol.clone());
+        symbol
+    }
+
+    pub fn populate_symbol_table_with_builtins(&mut self) {
+        for (idx, &name) in BUILTINS.iter().enumerate() {
+            self.define_builtin(idx, name.to_string());
+        }
     }
 }
 
@@ -215,7 +235,7 @@ mod test {
 
         let expected = [
             (
-                Rc::new(&first_local),
+                Rc::clone(&first_local),
                 [
                     Symbol {
                         name: String::from("a"),
@@ -240,7 +260,7 @@ mod test {
                 ],
             ),
             (
-                Rc::new(&second_local),
+                Rc::clone(&second_local),
                 [
                     Symbol {
                         name: String::from("a"),
@@ -273,6 +293,48 @@ mod test {
 
                 assert!(result.is_some());
                 assert_eq!(sym, &result.unwrap());
+            }
+        }
+    }
+
+    #[test]
+    fn define_resolve_builtins_test() {
+        let global = SymbolTable::new();
+        let first_local = SymbolTable::new_enclosed(Rc::clone(&global));
+        let second_local = SymbolTable::new_enclosed(Rc::clone(&first_local));
+
+        let expected = [
+            Symbol {
+                name: String::from("a"),
+                scope: SymbolScope::Builtin,
+                index: 0,
+            },
+            Symbol {
+                name: String::from("b"),
+                scope: SymbolScope::Builtin,
+                index: 1,
+            },
+            Symbol {
+                name: String::from("c"),
+                scope: SymbolScope::Builtin,
+                index: 2,
+            },
+            Symbol {
+                name: String::from("d"),
+                scope: SymbolScope::Builtin,
+                index: 3,
+            },
+        ];
+
+        for (idx, val) in expected.iter().enumerate() {
+            global.borrow_mut().define_builtin(idx, val.name.clone());
+        }
+
+        for table in [global, first_local, second_local] {
+            for sym in &expected {
+                let result = table.borrow().resolve(&sym.name);
+                assert!(result.is_some());
+                assert_eq!(&result.unwrap(), sym);
             }
         }
     }

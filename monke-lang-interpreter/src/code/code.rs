@@ -92,6 +92,7 @@ pub enum OpCodeType {
     Return,
     GetLocal,
     SetLocal,
+    GetBuiltin,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -125,6 +126,7 @@ impl TryInto<OpCodeType> for u8 {
             24 => Ok(OpCodeType::Return),
             25 => Ok(OpCodeType::GetLocal),
             26 => Ok(OpCodeType::SetLocal),
+            27 => Ok(OpCodeType::GetBuiltin),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -164,6 +166,7 @@ impl From<OpCodeType> for u8 {
             OpCodeType::Return => 24,
             OpCodeType::GetLocal => 25,
             OpCodeType::SetLocal => 26,
+            OpCodeType::GetBuiltin => 27,
         }
     }
 }
@@ -197,6 +200,7 @@ impl Display for OpCodeType {
             OpCodeType::Return => write!(f, "OpReturn"),
             OpCodeType::GetLocal => write!(f, "OpGetLocal"),
             OpCodeType::SetLocal => write!(f, "OpSetLocal"),
+            OpCodeType::GetBuiltin => write!(f, "OpGetBuiltin"),
         }
     }
 }
@@ -235,6 +239,7 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::Return => vec![],
         OpCodeType::GetLocal => vec![1],
         OpCodeType::SetLocal => vec![1],
+        OpCodeType::GetBuiltin => vec![1],
     };
 
     Definition {

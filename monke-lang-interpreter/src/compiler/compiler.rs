@@ -47,9 +47,14 @@ impl Compiler {
             prev_instruction: None,
         };
 
+        let symbol_table = SymbolTable::new();
+        symbol_table
+            .borrow_mut()
+            .populate_symbol_table_with_builtins();
+
         Compiler {
             constants: vec![],
-            symbol_table: SymbolTable::new(),
+            symbol_table,
             scopes: vec![main_scope],
             scope_index: 0,
         }
@@ -95,6 +100,7 @@ impl Compiler {
                         SymbolScope::Local => {
                             self.emit(OpCodeType::SetLocal, vec![symbol.index as i32])?
                         }
+                        _ => 0,
                     };
 
                     Ok(())
@@ -135,6 +141,7 @@ impl Compiler {
                         SymbolScope::Local => {
                             self.emit(OpCodeType::GetLocal, vec![value.index as i32])?
                         }
+                        _ => self.emit(OpCodeType::GetBuiltin, vec![value.index as i32])?,
                     };
 
                     Ok(())
@@ -1485,5 +1492,47 @@ fn() {
 
         assert!(prev.is_some());
         assert_eq!(OpCodeType::Mul, prev.unwrap().op_code);
+    }
+
+    #[test]
+    fn builtins_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from(
+                    "
+len([]);
+push([], 1);
+",
+                ),
+                expected_constants: vec![TestCaseResult::Integer(1)],
+                expected_instructions: vec![
+                    make(OpCodeType::GetBuiltin, vec![0]),
+                    make(OpCodeType::Array, vec![0]),
+                    make(OpCodeType::Call, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                    // might be wrong, idk... in the book it's 5
+                    make(OpCodeType::GetBuiltin, vec![4]),
+                    make(OpCodeType::Array, vec![0]),
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Call, vec![2]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from("fn() { len([]) }"),
+                expected_constants: vec![TestCaseResult::InstructionsVec(vec![
+                    make(OpCodeType::GetBuiltin, vec![0]),
+                    make(OpCodeType::Array, vec![0]),
+                    make(OpCodeType::Call, vec![1]),
+                    make(OpCodeType::ReturnValue, vec![]),
+                ])],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
+        run_compiler_tests(expected);
     }
 }
