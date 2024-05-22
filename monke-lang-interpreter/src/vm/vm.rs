@@ -2,9 +2,7 @@ use core::panic;
 use std::{collections::HashMap, usize};
 
 use crate::{
-    code::code::{read_u16, Instructions, OpCodeType},
-    compiler::compiler::ByteCode,
-    result::MonkeyResult, types::{Array, Boolean, CompiledFunction, HashTable, Integer, Null, Object, Str},
+    builtins::{get_builtin_function, BUILTINS}, code::code::{read_u16, Instructions, OpCodeType}, compiler::compiler::ByteCode, result::MonkeyResult, types::{Array, Boolean, BuiltinFunction, CompiledFunction, HashTable, Integer, Null, Object, Str}
 };
 
 const STACK_SIZE: usize = 2048;
@@ -188,6 +186,8 @@ impl Vm {
                     self.current_frame()?.ip += 2;
 
                     let array = self.build_array(self.sp - array_len as usize, self.sp)?;
+                    self.sp = self.sp - array_len as usize;
+
                     self.push(array)?;
                 }
                 OpCodeType::Hash => {
@@ -198,6 +198,8 @@ impl Vm {
                     self.current_frame()?.ip += 2;
 
                     let hash = self.build_hash(hash_len as usize)?;
+                    self.sp = self.sp - hash_len as usize;
+
                     self.push(hash)?;
                 }
                 OpCodeType::Index => {
@@ -205,12 +207,6 @@ impl Vm {
                     let left = self.pop()?;
 
                     self.execute_index_expression(left, index)?;
-                }
-                OpCodeType::Call => {
-                    let args_num = *ins.get(ip + 1).ok_or(format!(""))?;
-
-                    self.current_frame()?.ip += 1;
-                    self.call_function(args_num as usize)?;
                 }
                 OpCodeType::ReturnValue => {
                     let return_value = self.pop()?;
@@ -239,6 +235,20 @@ impl Vm {
                     let base_pointer = self.current_frame()?.base_pointer;
                     let local = self.stack.get(base_pointer + local_index as usize).ok_or(format!(""))?.clone();
                     self.push(local)?;
+                }
+                OpCodeType::GetBuiltin => {
+                    let builtin_index = *ins.get(ip + 1).ok_or(format!(""))?;
+                    self.current_frame()?.ip += 1;
+
+                    let builtin_name = BUILTINS.get(builtin_index as usize).ok_or(format!(""))?;
+                    let builtin = get_builtin_function(builtin_name).ok_or(format!(""))?;
+                    self.push(builtin)?;
+                }
+                OpCodeType::Call => {
+                    let args_num = *ins.get(ip + 1).ok_or(format!(""))?;
+                    self.current_frame()?.ip += 1;
+
+                    self.execute_call(args_num as usize)?;
                 }
                 _ => todo!(),
             }
@@ -437,25 +447,39 @@ impl Vm {
             .ok_or(format!("couldn't pop frame, frames stack is empty"))
     }
 
-    fn call_function(&mut self, args_num: usize) -> MonkeyResult<()> {
-        let obj = self.stack.get(self.sp - 1 - args_num as usize).ok_or(format!(""))?;
+    fn execute_call(&mut self, args_num: usize) -> MonkeyResult<()> {
+        let callee = self.stack.get(self.sp - 1 - args_num).ok_or(format!(""))?.clone();
 
-        match obj {
-            Object::CompiledFunction(compiled_fn) => {
-                if args_num != compiled_fn.parameters_num {
-                    return Err(format!("wrong number of arguments: want={}, got={}", compiled_fn.parameters_num, args_num));
-                }
-                let frame = Frame::new(compiled_fn.clone(), self.sp - args_num);
-
-                let base_pointer = frame.base_pointer;
-                let locals_num = compiled_fn.locals_num;
-
-                self.push_frame(frame);
-                self.sp = base_pointer + locals_num;
-                Ok(())
-            }
-            actual => Err(format!("calling non-function, got \"{actual}\""))?
+        match callee {
+            Object::CompiledFunction(func) => self.call_function(func, args_num),
+            Object::Builtin(func) => self.call_builtin(func, args_num),
+            actual => Err(format!("compiled or builtin function expected, but got \"{actual:?}\"")),
         }
+    }
+
+    fn call_function(&mut self, compiled_fn: CompiledFunction, args_num: usize) -> MonkeyResult<()> {
+        if args_num != compiled_fn.parameters_num {
+            return Err(format!("wrong number of arguments: want={}, got={}", compiled_fn.parameters_num, args_num));
+        }
+        let frame = Frame::new(compiled_fn.clone(), self.sp - args_num);
+
+        let base_pointer = frame.base_pointer;
+        let locals_num = compiled_fn.locals_num;
+
+        self.push_frame(frame);
+        self.sp = base_pointer + locals_num;
+
+        Ok(())
+    }
+
+    fn call_builtin(&mut self, builtin: BuiltinFunction, args_num: usize) -> MonkeyResult<()> {
+        let args = self.stack.get(self.sp - args_num..self.sp).ok_or(format!(""))?;
+        let result = (builtin.0)(args.to_vec())?;
+        self.sp = self.sp - args_num - 1;
+
+        self.push(result)?;
+
+        Ok(())
     }
 }
 
@@ -484,6 +508,7 @@ mod tests {
         Array(Vec<TestCaseResult>),
         Hash(HashMap<Object, TestCaseResult>),
         Null,
+        Error(String),
     }
 
     impl TestCaseResult {
@@ -520,6 +545,13 @@ mod tests {
                 (t1, t2) => panic!("can't compare {t1:?} and {t2:?}"),
             }
         }
+
+        fn test_err(&self, actual_err: String) {
+            match self {
+                TestCaseResult::Error(expected_err) => assert_eq!(expected_err, &actual_err),
+                t1 => panic!("expected \"{t1:?}\" but got error: \"{actual_err}\""),
+            }
+        }
     }
 
     fn run_vm_tests(cases: Vec<TestCase>) {
@@ -548,7 +580,8 @@ mod tests {
             let mut vm = Vm::new(byte_code);
 
             if let Err(err) = vm.run() {
-                panic!("{err}");
+                case.expected.test_err(err);
+                continue;
             }
 
             let stack_elem = vm.last_popped_stack_elem();
@@ -1167,36 +1200,36 @@ outer() + globalNum;
     #[test]
     fn calling_functions_with_wrong_arguments_test() {
         let expected = vec![
-            ("fn() { 1; }(1);", "wrong number of arguments: want=0, got=1"),
-            ("fn(a) { a; }();", "wrong number of arguments: want=1, got=0"),
-            ("fn(a, b) { a + b; }(1);", "wrong number of arguments: want=2, got=1")
+            TestCase { input: String::from("fn() { 1; }(1);"), expected: TestCaseResult::Error(String::from("wrong number of arguments: want=0, got=1"))},
+            TestCase { input: String::from("fn(a) { a; }();"), expected: TestCaseResult::Error(String::from("wrong number of arguments: want=1, got=0"))},
+            TestCase { input: String::from("fn(a, b) { a + b; }(1);"), expected: TestCaseResult::Error(String::from("wrong number of arguments: want=2, got=1"))}
         ];
 
-        for (input, expected_result) in expected {
-            let lexer = Lexer::new(input.to_string());
-            let mut parser = Parser::new(lexer);
+        run_vm_tests(expected);
+    }
 
-            let program = parser.parse_program();
+    #[test]
+    fn builtin_functions_test() {
+        let expected = vec![
+            TestCase { input: String::from(r#"len("")"#), expected: TestCaseResult::Integer(0), },
+            TestCase { input: String::from(r#"len("four")"#), expected: TestCaseResult::Integer(4) },
+            TestCase { input: String::from(r#"len("hello world")"#), expected: TestCaseResult::Integer(11) },
+            TestCase { input: String::from(r#"len(1)"#), expected: TestCaseResult::Error(String::from("argument to len function is not supported, String expected, but got \"1\"")) }, 
+            TestCase { input: String::from(r#"len("one", "two")"#), expected: TestCaseResult::Error(String::from("wrong number of arguments for len function, 1 argument expected, but got 2")) }, 
+            TestCase { input: String::from(r#"len([])"#), expected: TestCaseResult::Integer(0)},
+            TestCase { input: String::from(r#"puts("hello", "world!")"#), expected: TestCaseResult::Null},
+            TestCase { input: String::from(r#"first([1, 2, 3])"#), expected: TestCaseResult::Integer(1)},
+            TestCase { input: String::from(r#"first([])"#), expected: TestCaseResult::Null},
+            TestCase { input: String::from(r#"first(1)"#), expected: TestCaseResult::Error(String::from("argument to first function is not supported, Array expected, but got \"1\"")) }, 
+            TestCase { input: String::from(r#"last([1, 2, 3])"#), expected: TestCaseResult::Integer(3)},
+            TestCase { input: String::from(r#"last([])"#), expected: TestCaseResult::Null},
+            TestCase { input: String::from(r#"last(1)"#), expected: TestCaseResult::Error(String::from("argument to last function is not supported, Array expected, but got \"1\"")) }, 
+            TestCase { input: String::from(r#"rest([1, 2, 3])"#), expected: TestCaseResult::Array(vec![ TestCaseResult::Integer(2), TestCaseResult::Integer(3)])},
+            TestCase { input: String::from(r#"rest([])"#), expected: TestCaseResult::Null},
+            TestCase { input: String::from(r#"push([], 1)"#), expected: TestCaseResult::Array(vec![TestCaseResult::Integer(1)])},
+            TestCase { input: String::from(r#"push(1, 1)"#), expected: TestCaseResult::Error(String::from("argument to push function is not supported, Array expected, but got \"1\"")) }, 
+        ];
 
-            if let Err(err) = &program {
-                panic!("{err}");
-            }
-
-            let program = program.unwrap();
-
-            let mut compiler = Compiler::new();
-
-            if let Err(err) = compiler.compile(program) {
-                panic!("{err}");
-            }
-
-            let byte_code = compiler.byte_code();
-            assert!(byte_code.is_ok());
-
-            let byte_code = byte_code.unwrap();
-            let mut vm = Vm::new(byte_code);
-
-            assert!(vm.run().is_err_and(|err| err == expected_result));
-        }
+        run_vm_tests(expected);
     }
 }

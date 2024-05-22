@@ -1510,8 +1510,7 @@ push([], 1);
                     make(OpCodeType::Array, vec![0]),
                     make(OpCodeType::Call, vec![1]),
                     make(OpCodeType::Pop, vec![]),
-                    // might be wrong, idk... in the book it's 5
-                    make(OpCodeType::GetBuiltin, vec![4]),
+                    make(OpCodeType::GetBuiltin, vec![5]),
                     make(OpCodeType::Array, vec![0]),
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::Call, vec![2]),

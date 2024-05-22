@@ -12,11 +12,11 @@ const PUTS_BUILTIN: &str = "puts";
 
 pub const BUILTINS: [&str; 6] = [
     LEN_BUILTIN,
+    PUTS_BUILTIN,
     FIRST_BUILTIN,
     LAST_BUILTIN,
     REST_BUILTIN,
     PUSH_BUILTIN,
-    PUTS_BUILTIN,
 ];
 
 pub fn get_builtin_function(fn_name: &str) -> Option<Object> {
@@ -47,7 +47,7 @@ fn len_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
             value: array.elements.len() as i64,
         })),
         actual => Err(format!(
-            "argument to len function is not supported, String expected, but got {actual}"
+            "argument to len function is not supported, String expected, but got \"{actual}\""
         )),
     }
 }
@@ -66,7 +66,7 @@ fn first_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
             _ => Ok(array.elements.get(0).cloned().unwrap()),
         },
         actual => Err(format!(
-            "argument to first function is not supported, Array expected, but got {actual}"
+            "argument to first function is not supported, Array expected, but got \"{actual}\""
         )),
     }
 }
@@ -89,7 +89,7 @@ fn last_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
                 .unwrap()),
         },
         actual => Err(format!(
-            "argument to last function is not supported, Array expected, but got {actual}"
+            "argument to last function is not supported, Array expected, but got \"{actual}\""
         )),
     }
 }
@@ -110,7 +110,7 @@ fn rest_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
             })),
         },
         actual => Err(format!(
-            "argument to rest function is not supported, Array expected, but got {actual}"
+            "argument to rest function is not supported, Array expected, but got \"{actual}\""
         )),
     }
 }
@@ -133,7 +133,7 @@ fn push_builtin(args: Vec<Object>) -> MonkeyResult<Object> {
             }))
         }
         actual => Err(format!(
-            "argument to push function is not supported, Array expected, but got {actual}"
+            "argument to push function is not supported, Array expected, but got \"{actual}\""
         )),
     }
 }

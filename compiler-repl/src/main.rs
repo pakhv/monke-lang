@@ -1,8 +1,8 @@
 use monke_lang_interpreter::{
     compiler::{compiler::Compiler, symbol_table::SymbolTable},
-    evaluator::types::{Null, Object},
     lexer::lexer::Lexer,
     parser::parser::Parser,
+    types::{Null, Object},
     vm::vm::Vm,
 };
 use std::io::{self, Result, Write};
@@ -31,6 +31,9 @@ fn main() -> Result<()> {
     let mut constants = vec![];
     let mut globals = vec![Object::Null(Null {}); GLOBALS_SIZE];
     let mut symbols_table = SymbolTable::new();
+    symbols_table
+        .borrow_mut()
+        .populate_symbol_table_with_builtins();
 
     while let Ok(_) = io::stdin().read_line(&mut buffer) {
         let lexer = Lexer::new(buffer.clone());
