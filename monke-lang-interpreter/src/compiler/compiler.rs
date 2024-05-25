@@ -274,7 +274,7 @@ impl Compiler {
                     });
 
                     let compiled_fn_const = self.add_constant(compiled_fn);
-                    self.emit(OpCodeType::Constant, vec![compiled_fn_const as i32])?;
+                    self.emit(OpCodeType::Closure, vec![compiled_fn_const as i32, 0])?;
 
                     Ok(())
                 }
@@ -1113,7 +1113,7 @@ two;
                     ]),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Closure, vec![2, 0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
@@ -1130,7 +1130,7 @@ two;
                     ]),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Closure, vec![2, 0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
@@ -1147,7 +1147,7 @@ two;
                     ]),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Closure, vec![2, 0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
@@ -1158,7 +1158,7 @@ two;
                     vec![],
                 )])],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Closure, vec![0, 0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
@@ -1220,7 +1220,7 @@ two;
                     ]),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Closure, vec![1, 0]),
                     make(OpCodeType::Call, vec![0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
@@ -1238,7 +1238,7 @@ noArg();",
                     ]),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Closure, vec![1, 0]),
                     make(OpCodeType::SetGlobal, vec![0]),
                     make(OpCodeType::GetGlobal, vec![0]),
                     make(OpCodeType::Call, vec![0]),
@@ -1257,7 +1257,7 @@ oneArg(24);
                     TestCaseResult::Integer(24),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Closure, vec![0, 0]),
                     make(OpCodeType::SetGlobal, vec![0]),
                     make(OpCodeType::GetGlobal, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -1279,7 +1279,7 @@ manyArg(24, 25, 26);
                     TestCaseResult::Integer(26),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Closure, vec![0, 0]),
                     make(OpCodeType::SetGlobal, vec![0]),
                     make(OpCodeType::GetGlobal, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -1304,7 +1304,7 @@ oneArg(24);
                     TestCaseResult::Integer(24),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Closure, vec![0, 0]),
                     make(OpCodeType::SetGlobal, vec![0]),
                     make(OpCodeType::GetGlobal, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -1333,7 +1333,7 @@ manyArg(24, 25, 26);
                     TestCaseResult::Integer(26),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Closure, vec![0, 0]),
                     make(OpCodeType::SetGlobal, vec![0]),
                     make(OpCodeType::GetGlobal, vec![0]),
                     make(OpCodeType::Constant, vec![1]),
@@ -1367,7 +1367,7 @@ fn() { num };",
                 expected_instructions: vec![
                     make(OpCodeType::Constant, vec![0]),
                     make(OpCodeType::SetGlobal, vec![0]),
-                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Closure, vec![1, 0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
@@ -1389,7 +1389,7 @@ fn() {
                     ]),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![1]),
+                    make(OpCodeType::Closure, vec![1, 0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
@@ -1418,7 +1418,7 @@ fn() {
                     ]),
                 ],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Closure, vec![2, 0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
@@ -1526,7 +1526,7 @@ push([], 1);
                     make(OpCodeType::ReturnValue, vec![]),
                 ])],
                 expected_instructions: vec![
-                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::Closure, vec![0, 0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },

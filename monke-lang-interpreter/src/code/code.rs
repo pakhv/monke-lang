@@ -49,13 +49,14 @@ impl Display for Instructions {
             let (operands, read) =
                 read_operands(def.clone(), self.0.get(i + 1..).ok_or(Error)?.into());
 
-            let fmt = match operands.len() {
-                0 => def.name.to_string(),
-                1 => format!("{} {}", op.to_string(), operands[0]),
-                _ => Err(Error)?,
-            };
+            let formatted_ops = operands
+                .iter()
+                .map(|o| o.to_string())
+                .reduce(|acc, cur| format!("{acc} {cur}"))
+                .and_then(|r| Some(format!(" {r}")))
+                .unwrap_or(String::new());
 
-            buffer = format!("{buffer}{i:0>4} {fmt}\n");
+            buffer = format!("{buffer}{i:0>4} {op}{formatted_ops}\n");
 
             i += 1 + read;
         }
@@ -93,6 +94,7 @@ pub enum OpCodeType {
     GetLocal,
     SetLocal,
     GetBuiltin,
+    Closure,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -127,6 +129,7 @@ impl TryInto<OpCodeType> for u8 {
             25 => Ok(OpCodeType::GetLocal),
             26 => Ok(OpCodeType::SetLocal),
             27 => Ok(OpCodeType::GetBuiltin),
+            28 => Ok(OpCodeType::Closure),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -167,6 +170,7 @@ impl From<OpCodeType> for u8 {
             OpCodeType::GetLocal => 25,
             OpCodeType::SetLocal => 26,
             OpCodeType::GetBuiltin => 27,
+            OpCodeType::Closure => 28,
         }
     }
 }
@@ -201,6 +205,7 @@ impl Display for OpCodeType {
             OpCodeType::GetLocal => write!(f, "OpGetLocal"),
             OpCodeType::SetLocal => write!(f, "OpSetLocal"),
             OpCodeType::GetBuiltin => write!(f, "OpGetBuiltin"),
+            OpCodeType::Closure => write!(f, "OpClosure"),
         }
     }
 }
@@ -240,6 +245,7 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::GetLocal => vec![1],
         OpCodeType::SetLocal => vec![1],
         OpCodeType::GetBuiltin => vec![1],
+        OpCodeType::Closure => vec![2, 1],
     };
 
     Definition {
@@ -317,6 +323,11 @@ mod tests {
                 vec![255],
                 vec![OpCodeType::GetLocal.into(), 255],
             ),
+            (
+                OpCodeType::Closure,
+                vec![65534, 255],
+                vec![OpCodeType::Closure.into(), 255, 254, 255],
+            ),
         ];
 
         for (opcode, operands, expected) in expected_result {
@@ -335,6 +346,7 @@ mod tests {
         let expected = vec![
             (OpCodeType::Constant, vec![65535], 2),
             (OpCodeType::GetLocal, vec![255], 1),
+            (OpCodeType::Closure, vec![65535, 255], 3),
         ];
 
         for (op, operands, bytes_read) in expected {
@@ -355,12 +367,14 @@ mod tests {
             make(OpCodeType::GetLocal, vec![1]),
             make(OpCodeType::Constant, vec![2]),
             make(OpCodeType::Constant, vec![65535]),
+            make(OpCodeType::Closure, vec![65535, 255]),
         ];
 
         let expected = r#"0000 OpAdd
 0001 OpGetLocal 1
 0003 OpConstant 2
 0006 OpConstant 65535
+0009 OpClosure 65535 255
 "#;
 
         let instructions = Instructions(instructions.into_iter().flatten().collect::<Vec<_>>());
