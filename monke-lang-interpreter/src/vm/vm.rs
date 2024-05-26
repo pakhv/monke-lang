@@ -2,7 +2,7 @@ use core::panic;
 use std::{collections::HashMap, usize};
 
 use crate::{
-    builtins::{get_builtin_function, BUILTINS}, code::code::{read_u16, Instructions, OpCodeType}, compiler::compiler::ByteCode, result::MonkeyResult, types::{Array, Boolean, BuiltinFunction, CompiledFunction, HashTable, Integer, Null, Object, Str}
+    builtins::{get_builtin_function, BUILTINS}, code::code::{read_u16, Instructions, OpCodeType}, compiler::compiler::ByteCode, result::MonkeyResult, types::{Array, Boolean, BuiltinFunction, Closure, CompiledFunction, HashTable, Integer, Null, Object, Str}
 };
 
 const STACK_SIZE: usize = 2048;
@@ -11,18 +11,18 @@ const MAX_FRAMES: usize = 1024;
 
 #[derive(Debug, Clone)]
 struct Frame {
-    func: CompiledFunction,
+    cl: Closure,
     ip: isize,
     base_pointer: usize
 }
 
 impl Frame {
-    fn new(func: CompiledFunction, base_pointer: usize) -> Self {
-        Frame { ip: -1, func, base_pointer }
+    fn new(func: Closure, base_pointer: usize) -> Self {
+        Frame { ip: -1, cl: func, base_pointer }
     }
 
     fn instructions(&self) -> &Instructions {
-        &self.func.instructions
+        &self.cl.func.instructions
     }
 }
 
@@ -38,8 +38,11 @@ pub struct Vm {
 
 impl Vm {
     pub fn new(byte_code: ByteCode) -> Self {
+        let main_fn = CompiledFunction { instructions: byte_code.instructions, locals_num: 0, parameters_num: 0 };
+        let main_closure = Closure { func: main_fn, free: vec![] };
+
         let mut frames = vec![None; MAX_FRAMES];
-        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions, locals_num: 0, parameters_num: 0 }, 0));
+        frames[0] = Some(Frame::new(main_closure, 0));
 
         Vm {
             constants: byte_code.constants,
@@ -52,8 +55,11 @@ impl Vm {
     }
 
     pub fn new_with_global_store(byte_code: ByteCode, globals: Vec<Object>) -> Self {
+        let main_fn = CompiledFunction { instructions: byte_code.instructions, locals_num: 0, parameters_num: 0 };
+        let main_closure = Closure { func: main_fn, free: vec![] };
+
         let mut frames = vec![None; MAX_FRAMES];
-        frames[0] = Some(Frame::new(CompiledFunction { instructions: byte_code.instructions, locals_num: 0, parameters_num: 0 }, 0));
+        frames[0] = Some(Frame::new(main_closure, 0));
 
         Vm {
             constants: byte_code.constants,
@@ -249,6 +255,13 @@ impl Vm {
                     self.current_frame()?.ip += 1;
 
                     self.execute_call(args_num as usize)?;
+                }
+                OpCodeType::Closure => {
+                    let const_index = read_u16(ins.get(ip + 1..).ok_or(format!(""))?);
+                    let _ = *ins.get(ip + 3).ok_or(format!(""))?;
+
+                    self.current_frame()?.ip += 3;
+                    self.push_closure(const_index as usize)?;
                 }
                 _ => todo!(),
             }
@@ -451,20 +464,20 @@ impl Vm {
         let callee = self.stack.get(self.sp - 1 - args_num).ok_or(format!(""))?.clone();
 
         match callee {
-            Object::CompiledFunction(func) => self.call_function(func, args_num),
+            Object::Closure(closure) => self.call_closure(closure, args_num),
             Object::Builtin(func) => self.call_builtin(func, args_num),
-            actual => Err(format!("compiled or builtin function expected, but got \"{actual:?}\"")),
+            actual => Err(format!("closure or builtin function expected, but got \"{actual:?}\"")),
         }
     }
 
-    fn call_function(&mut self, compiled_fn: CompiledFunction, args_num: usize) -> MonkeyResult<()> {
-        if args_num != compiled_fn.parameters_num {
-            return Err(format!("wrong number of arguments: want={}, got={}", compiled_fn.parameters_num, args_num));
+    fn call_closure(&mut self, closure: Closure, args_num: usize) -> MonkeyResult<()> {
+        if args_num != closure.func.parameters_num {
+            return Err(format!("wrong number of arguments: want={}, got={}", closure.func.parameters_num, args_num));
         }
-        let frame = Frame::new(compiled_fn.clone(), self.sp - args_num);
+        let frame = Frame::new(closure.clone(), self.sp - args_num);
 
         let base_pointer = frame.base_pointer;
-        let locals_num = compiled_fn.locals_num;
+        let locals_num = closure.func.locals_num;
 
         self.push_frame(frame);
         self.sp = base_pointer + locals_num;
@@ -480,6 +493,15 @@ impl Vm {
         self.push(result)?;
 
         Ok(())
+    }
+
+    fn push_closure(&mut self, const_index: usize) -> MonkeyResult<()> {
+        let constant = self.constants.get(const_index).ok_or(format!(""))?.clone();
+
+        match constant {
+            Object::CompiledFunction(compiled_fn) => self.push(Object::Closure(Closure { func: compiled_fn, free: vec![] })),
+            _ => Err(String::from(""))
+        }
     }
 }
 
