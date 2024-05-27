@@ -129,21 +129,12 @@ impl Compiler {
                 Expression::Identifier(ident) => {
                     let value = self
                         .symbol_table
-                        .borrow()
+                        .borrow_mut()
                         .resolve(&ident.to_string())
                         .ok_or(format!("couldn't resolve identifier value: \"{ident}\""))?
                         .clone();
 
-                    match value.scope {
-                        SymbolScope::Global => {
-                            self.emit(OpCodeType::GetGlobal, vec![value.index as i32])?
-                        }
-                        SymbolScope::Local => {
-                            self.emit(OpCodeType::GetLocal, vec![value.index as i32])?
-                        }
-                        _ => self.emit(OpCodeType::GetBuiltin, vec![value.index as i32])?,
-                    };
-
+                    self.load_symbol(value)?;
                     Ok(())
                 }
                 Expression::IntegerLiteral(int_expression) => {
@@ -265,8 +256,15 @@ impl Compiler {
                         self.emit(OpCodeType::Return, vec![])?;
                     }
 
+                    let free_symbols = self.symbol_table.borrow().free_symbols.clone();
+                    let free_symbols_len = free_symbols.len();
                     let locals_num = self.symbol_table.borrow().definitions_num;
                     let instructions = self.leave_scope().ok_or(String::from(""))?;
+
+                    for s in free_symbols {
+                        self.load_symbol(s)?;
+                    }
+
                     let compiled_fn = Object::CompiledFunction(CompiledFunction {
                         instructions,
                         locals_num,
@@ -274,7 +272,10 @@ impl Compiler {
                     });
 
                     let compiled_fn_const = self.add_constant(compiled_fn);
-                    self.emit(OpCodeType::Closure, vec![compiled_fn_const as i32, 0])?;
+                    self.emit(
+                        OpCodeType::Closure,
+                        vec![compiled_fn_const as i32, free_symbols_len as i32],
+                    )?;
 
                     Ok(())
                 }
@@ -531,6 +532,17 @@ impl Compiler {
         )?;
         last_instructions.op_code = OpCodeType::ReturnValue;
         self.scopes[self.scope_index].last_instruction = Some(last_instructions);
+
+        Ok(())
+    }
+
+    fn load_symbol(&mut self, value: super::symbol_table::Symbol) -> MonkeyResult<()> {
+        match value.scope {
+            SymbolScope::Global => self.emit(OpCodeType::GetGlobal, vec![value.index as i32])?,
+            SymbolScope::Local => self.emit(OpCodeType::GetLocal, vec![value.index as i32])?,
+            SymbolScope::Builtin => self.emit(OpCodeType::GetBuiltin, vec![value.index as i32])?,
+            SymbolScope::Free => self.emit(OpCodeType::GetFree, vec![value.index as i32])?,
+        };
 
         Ok(())
     }
@@ -1532,6 +1544,138 @@ push([], 1);
             },
         ];
 
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn closure_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from(
+                    "
+fn(a) {
+    fn(b) {
+        a + b
+    }
+}
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::GetFree, vec![0]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Add, vec![]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Closure, vec![0, 1]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Closure, vec![1, 0]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+fn(a) {
+    fn(b) {
+        fn(c) {
+            a + b + c
+        }
+    }
+};
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::GetFree, vec![0]),
+                        make(OpCodeType::GetFree, vec![1]),
+                        make(OpCodeType::Add, vec![]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Add, vec![]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::GetFree, vec![0]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Closure, vec![0, 2]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Closure, vec![1, 1]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Closure, vec![2, 0]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+let global = 55;
+
+fn() {
+    let a = 66;
+
+    fn() {
+        let b = 77;
+
+        fn() {
+            let c = 88;
+            global + a + b + c;
+        }
+    }
+}
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::Integer(55),
+                    TestCaseResult::Integer(66),
+                    TestCaseResult::Integer(77),
+                    TestCaseResult::Integer(88),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![3]),
+                        make(OpCodeType::SetLocal, vec![0]),
+                        make(OpCodeType::GetGlobal, vec![0]),
+                        make(OpCodeType::GetFree, vec![0]),
+                        make(OpCodeType::Add, vec![]),
+                        make(OpCodeType::GetFree, vec![1]),
+                        make(OpCodeType::Add, vec![]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Add, vec![]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![2]),
+                        make(OpCodeType::SetLocal, vec![0]),
+                        make(OpCodeType::GetFree, vec![0]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Closure, vec![4, 2]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Constant, vec![1]),
+                        make(OpCodeType::SetLocal, vec![0]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Closure, vec![5, 1]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Constant, vec![0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::Closure, vec![6, 0]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
         run_compiler_tests(expected);
     }
 }

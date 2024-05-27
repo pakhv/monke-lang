@@ -7,6 +7,7 @@ pub enum SymbolScope {
     Global,
     Local,
     Builtin,
+    Free,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -21,6 +22,7 @@ pub struct SymbolTable {
     pub store: HashMap<String, Symbol>,
     pub outer: Option<SymbolTableRef>,
     pub definitions_num: usize,
+    pub free_symbols: Vec<Symbol>,
 }
 
 pub type SymbolTableRef = Rc<RefCell<SymbolTable>>;
@@ -42,6 +44,7 @@ impl SymbolTable {
             store: HashMap::new(),
             outer: None,
             definitions_num: 0,
+            free_symbols: vec![],
         }))
     }
 
@@ -61,13 +64,25 @@ impl SymbolTable {
         symbol
     }
 
-    pub fn resolve(&self, name: &str) -> Option<Symbol> {
+    pub fn resolve(&mut self, name: &str) -> Option<Symbol> {
         let result = self.store.get(name);
 
         match result {
             Some(symbol) => Some(symbol.clone()),
-            None => match &self.outer {
-                Some(outer) => outer.borrow_mut().resolve(name),
+            None => match &self.outer.clone() {
+                Some(outer) => match outer.borrow_mut().resolve(name) {
+                    Some(outer_result) => {
+                        if outer_result.scope == SymbolScope::Global
+                            || outer_result.scope == SymbolScope::Builtin
+                        {
+                            return Some(outer_result);
+                        }
+
+                        let free = self.define_free(outer_result);
+                        Some(free)
+                    }
+                    None => None,
+                },
                 None => None,
             },
         }
@@ -95,6 +110,19 @@ impl SymbolTable {
         for (idx, &name) in BUILTINS.iter().enumerate() {
             self.define_builtin(idx, name.to_string());
         }
+    }
+
+    pub fn define_free(&mut self, original: Symbol) -> Symbol {
+        self.free_symbols.push(original.clone());
+
+        let symbol = Symbol {
+            name: original.name.clone(),
+            index: self.free_symbols.len() - 1,
+            scope: SymbolScope::Free,
+        };
+
+        self.store.insert(original.name, symbol.clone());
+        symbol
     }
 }
 
@@ -157,7 +185,7 @@ mod test {
         ]);
 
         for (name, symbol) in expected.iter() {
-            let result = table.borrow();
+            let mut result = table.borrow_mut();
             let result = result.resolve(name);
 
             assert!(result.is_some());
@@ -211,7 +239,7 @@ mod test {
         ]);
 
         for (name, symbol) in expected.iter() {
-            let result = local.borrow();
+            let mut result = local.borrow_mut();
             let result = result.resolve(name);
 
             assert!(result.is_some());
@@ -288,7 +316,7 @@ mod test {
 
         for (actual_symbols, symbols) in expected.iter() {
             for sym in symbols {
-                let result = actual_symbols.borrow();
+                let mut result = actual_symbols.borrow_mut();
                 let result = result.resolve(&sym.name);
 
                 assert!(result.is_some());
@@ -332,10 +360,164 @@ mod test {
 
         for table in [global, first_local, second_local] {
             for sym in &expected {
-                let result = table.borrow().resolve(&sym.name);
+                let result = table.borrow_mut().resolve(&sym.name);
                 assert!(result.is_some());
                 assert_eq!(&result.unwrap(), sym);
             }
+        }
+    }
+
+    #[test]
+    fn resolve_free_test() {
+        let global = SymbolTable::new();
+        global.borrow_mut().define(String::from("a"));
+        global.borrow_mut().define(String::from("b"));
+
+        let first_local = SymbolTable::new_enclosed(Rc::clone(&global));
+        first_local.borrow_mut().define(String::from("c"));
+        first_local.borrow_mut().define(String::from("d"));
+
+        let second_local = SymbolTable::new_enclosed(Rc::clone(&first_local));
+        second_local.borrow_mut().define(String::from("e"));
+        second_local.borrow_mut().define(String::from("f"));
+
+        let expected = [
+            (
+                first_local,
+                vec![
+                    Symbol {
+                        name: String::from("a"),
+                        scope: SymbolScope::Global,
+                        index: 0,
+                    },
+                    Symbol {
+                        name: String::from("b"),
+                        scope: SymbolScope::Global,
+                        index: 1,
+                    },
+                    Symbol {
+                        name: String::from("c"),
+                        scope: SymbolScope::Local,
+                        index: 0,
+                    },
+                    Symbol {
+                        name: String::from("d"),
+                        scope: SymbolScope::Local,
+                        index: 1,
+                    },
+                ],
+                vec![],
+            ),
+            (
+                second_local,
+                vec![
+                    Symbol {
+                        name: String::from("a"),
+                        scope: SymbolScope::Global,
+                        index: 0,
+                    },
+                    Symbol {
+                        name: String::from("b"),
+                        scope: SymbolScope::Global,
+                        index: 1,
+                    },
+                    Symbol {
+                        name: String::from("c"),
+                        scope: SymbolScope::Free,
+                        index: 0,
+                    },
+                    Symbol {
+                        name: String::from("d"),
+                        scope: SymbolScope::Free,
+                        index: 1,
+                    },
+                    Symbol {
+                        name: String::from("e"),
+                        scope: SymbolScope::Local,
+                        index: 0,
+                    },
+                    Symbol {
+                        name: String::from("f"),
+                        scope: SymbolScope::Local,
+                        index: 1,
+                    },
+                ],
+                vec![
+                    Symbol {
+                        name: String::from("c"),
+                        scope: SymbolScope::Local,
+                        index: 0,
+                    },
+                    Symbol {
+                        name: String::from("d"),
+                        scope: SymbolScope::Local,
+                        index: 1,
+                    },
+                ],
+            ),
+        ];
+
+        for (table, symbols, free_symbols) in expected {
+            for sym in &symbols {
+                let result = table.borrow_mut().resolve(&sym.name);
+                assert!(result.is_some());
+                assert_eq!(&result.unwrap(), sym);
+            }
+
+            assert_eq!(free_symbols.len(), table.borrow().free_symbols.len());
+
+            for (exp_sym, actual_sym) in free_symbols.iter().zip(table.borrow().free_symbols.iter())
+            {
+                assert_eq!(exp_sym, actual_sym);
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_unresolvable_free_test() {
+        let global = SymbolTable::new();
+        global.borrow_mut().define(String::from("a"));
+
+        let first_local = SymbolTable::new_enclosed(Rc::clone(&global));
+        first_local.borrow_mut().define(String::from("c"));
+
+        let second_local = SymbolTable::new_enclosed(Rc::clone(&first_local));
+        second_local.borrow_mut().define(String::from("e"));
+        second_local.borrow_mut().define(String::from("f"));
+
+        let expected = [
+            Symbol {
+                name: String::from("a"),
+                scope: SymbolScope::Global,
+                index: 0,
+            },
+            Symbol {
+                name: String::from("c"),
+                scope: SymbolScope::Free,
+                index: 0,
+            },
+            Symbol {
+                name: String::from("e"),
+                scope: SymbolScope::Local,
+                index: 0,
+            },
+            Symbol {
+                name: String::from("f"),
+                scope: SymbolScope::Local,
+                index: 1,
+            },
+        ];
+
+        for sym in expected {
+            let result = second_local.borrow_mut().resolve(&sym.name);
+            assert!(result.is_some());
+            assert_eq!(result.unwrap(), sym);
+        }
+
+        let expected_unresolvable = vec![String::from("b"), String::from("d")];
+
+        for name in expected_unresolvable {
+            assert!(second_local.borrow_mut().resolve(&name).is_none());
         }
     }
 }
