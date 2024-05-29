@@ -258,10 +258,17 @@ impl Vm {
                 }
                 OpCodeType::Closure => {
                     let const_index = read_u16(ins.get(ip + 1..).ok_or(format!(""))?);
-                    let _ = *ins.get(ip + 3).ok_or(format!(""))?;
+                    let free_num = *ins.get(ip + 3).ok_or(format!(""))?;
 
                     self.current_frame()?.ip += 3;
-                    self.push_closure(const_index as usize)?;
+                    self.push_closure(const_index as usize, free_num as usize)?;
+                }
+                OpCodeType::GetFree => {
+                    let free_idx = *ins.get(ip + 1).ok_or(format!(""))?;
+                    self.current_frame()?.ip += 1;
+
+                    let current_closure = self.current_frame()?.cl.clone();
+                    self.push(current_closure.free.get(free_idx as usize).ok_or(format!(""))?.clone())?;
                 }
                 _ => todo!(),
             }
@@ -495,11 +502,14 @@ impl Vm {
         Ok(())
     }
 
-    fn push_closure(&mut self, const_index: usize) -> MonkeyResult<()> {
+    fn push_closure(&mut self, const_index: usize, free_num: usize) -> MonkeyResult<()> {
         let constant = self.constants.get(const_index).ok_or(format!(""))?.clone();
 
         match constant {
-            Object::CompiledFunction(compiled_fn) => self.push(Object::Closure(Closure { func: compiled_fn, free: vec![] })),
+            Object::CompiledFunction(compiled_fn) => { 
+                let free = self.stack.get(self.sp - free_num..self.sp).ok_or(format!(""))?.iter().cloned().collect::<Vec<_>>();
+                self.push(Object::Closure(Closure { func: compiled_fn, free })) 
+            },
             _ => Err(String::from(""))
         }
     }
@@ -1250,6 +1260,91 @@ outer() + globalNum;
             TestCase { input: String::from(r#"rest([])"#), expected: TestCaseResult::Null},
             TestCase { input: String::from(r#"push([], 1)"#), expected: TestCaseResult::Array(vec![TestCaseResult::Integer(1)])},
             TestCase { input: String::from(r#"push(1, 1)"#), expected: TestCaseResult::Error(String::from("argument to push function is not supported, Array expected, but got \"1\"")) }, 
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn closures_test() {
+        let expected = vec![TestCase {
+                input: String::from("
+let newClosure = fn(a) {
+    fn() { a; };
+};
+let closure = newClosure(99);
+closure();
+"
+            ),
+                expected: TestCaseResult::Integer(99),
+            },
+            TestCase {
+                input: String::from("
+let newAdder = fn(a, b) {
+    fn(c) { a + b + c };
+};
+let adder = newAdder(1, 2);
+adder(8);
+"
+            ),
+                expected: TestCaseResult::Integer(11),
+            },
+            TestCase {
+                input: String::from("
+let newAdder = fn(a, b) {
+    let c = a + b;
+    fn(d) { c + d };
+};
+let adder = newAdder(1, 2);
+adder(8);
+"
+            ),
+                expected: TestCaseResult::Integer(11),
+            },
+            TestCase {
+                input: String::from("
+let newAdderOuter = fn(a, b) {
+    let c = a + b;
+    fn(d) {
+        let e = d + c;
+        fn(f) { e + f; };
+    };
+};
+let newAdderInner = newAdderOuter(1, 2)
+let adder = newAdderInner(3);
+adder(8);
+"
+            ),
+                expected: TestCaseResult::Integer(14),
+            },
+            TestCase {
+                input: String::from("
+let a = 1;
+let newAdderOuter = fn(b) {
+    fn(c) {
+        fn(d) { a + b + c + d };
+    };
+};
+let newAdderInner = newAdderOuter(2)
+let adder = newAdderInner(3);
+adder(8);
+"
+            ),
+                expected: TestCaseResult::Integer(14),
+            },
+            TestCase {
+                input: String::from("
+let newClosure = fn(a, b) {
+    let one = fn() { a; };
+    let two = fn() { b; };
+    fn() { one() + two(); };
+};
+let closure = newClosure(9, 90);
+closure();
+"
+            ),
+                expected: TestCaseResult::Integer(99),
+            }
         ];
 
         run_vm_tests(expected);
