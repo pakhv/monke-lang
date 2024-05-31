@@ -82,6 +82,24 @@ impl Parser {
 
         let value = Rc::new(self.parse_expression(ExpressionType::Lowest as usize)?);
 
+        // that's rough lol but idk
+        let value = match value.as_ref() {
+            Expression::FunctionLiteral(func_literal) => {
+                let func_literal_copy = func_literal.clone();
+
+                Rc::new(Expression::FunctionLiteral(FunctionLiteral {
+                    token: func_literal_copy.token,
+                    parameters: func_literal_copy.parameters,
+                    body: func_literal_copy.body,
+                    name: match statement_name.clone() {
+                        Token::Ident(ident) => ident,
+                        _ => String::from("unknown_fn"),
+                    },
+                }))
+            }
+            _ => value,
+        };
+
         if self
             .peek_token
             .as_ref()
@@ -373,6 +391,7 @@ impl Parser {
             token,
             parameters,
             body,
+            name: String::new(),
         }))
     }
 
@@ -1592,6 +1611,29 @@ mod tests {
                     }
                 }
                 actual => panic!("hash literal expected, but got {actual}"),
+            },
+            actual => panic!("expression statement expected, but got {actual}"),
+        }
+    }
+
+    #[test]
+    fn function_literal_with_name_test() {
+        let input = "let myFunction = fn() { };";
+        let expected = String::from("myFunction");
+        let program = parse_input(input);
+
+        let statements = match program {
+            Program::Statements(statements) => statements,
+            actual => panic!("statements expected, but got {actual}"),
+        };
+        assert_eq!(statements.len(), 1);
+
+        match statements.first().unwrap().as_ref() {
+            Statement::Let(let_stmt) => match &let_stmt.value.as_ref() {
+                Expression::FunctionLiteral(func_literal) => {
+                    assert_eq!(expected, func_literal.name)
+                }
+                actual => panic!("function literal expected, but got {actual}"),
             },
             actual => panic!("expression statement expected, but got {actual}"),
         }

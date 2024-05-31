@@ -96,6 +96,7 @@ pub enum OpCodeType {
     GetBuiltin,
     Closure,
     GetFree,
+    CurrentClosure,
 }
 
 impl TryInto<OpCodeType> for u8 {
@@ -132,6 +133,7 @@ impl TryInto<OpCodeType> for u8 {
             27 => Ok(OpCodeType::GetBuiltin),
             28 => Ok(OpCodeType::Closure),
             29 => Ok(OpCodeType::GetFree),
+            30 => Ok(OpCodeType::CurrentClosure),
             n => {
                 let error = format!("Error converting \"{n}\" to OpCodeType");
 
@@ -174,6 +176,7 @@ impl From<OpCodeType> for u8 {
             OpCodeType::GetBuiltin => 27,
             OpCodeType::Closure => 28,
             OpCodeType::GetFree => 29,
+            OpCodeType::CurrentClosure => 30,
         }
     }
 }
@@ -210,6 +213,7 @@ impl Display for OpCodeType {
             OpCodeType::GetBuiltin => write!(f, "OpGetBuiltin"),
             OpCodeType::Closure => write!(f, "OpClosure"),
             OpCodeType::GetFree => write!(f, "OpGetFree"),
+            OpCodeType::CurrentClosure => write!(f, "OpCurrentClosure"),
         }
     }
 }
@@ -251,6 +255,7 @@ pub fn get_definition(name: &OpCodeType) -> Definition {
         OpCodeType::GetBuiltin => vec![1],
         OpCodeType::Closure => vec![2, 1],
         OpCodeType::GetFree => vec![1],
+        OpCodeType::CurrentClosure => vec![],
     };
 
     Definition {

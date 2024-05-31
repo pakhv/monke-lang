@@ -86,12 +86,11 @@ impl Compiler {
             }
             Program::Statement(statement) => match statement.as_ref() {
                 Statement::Let(let_statement) => {
-                    self.compile(Rc::clone(&let_statement.value).into())?;
-
                     let symbol = self
                         .symbol_table
                         .borrow_mut()
                         .define(let_statement.name.to_string());
+                    self.compile(Rc::clone(&let_statement.value).into())?;
 
                     match symbol.scope {
                         SymbolScope::Global => {
@@ -1676,6 +1675,79 @@ fn() {
                 ],
             },
         ];
+        run_compiler_tests(expected);
+    }
+
+    #[test]
+    fn recursive_functions_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from(
+                    "
+let countDown = fn(x) { countDown(x - 1); };
+countDown(1);
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::CurrentClosure, vec![]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Constant, vec![0]),
+                        make(OpCodeType::Sub, vec![]),
+                        make(OpCodeType::Call, vec![1]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Closure, vec![1, 0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::GetGlobal, vec![0]),
+                    make(OpCodeType::Constant, vec![2]),
+                    make(OpCodeType::Call, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+            TestCase {
+                input: String::from(
+                    "
+let wrapper = fn() {
+    let countDown = fn(x) { countDown(x - 1); };
+    countDown(1);
+};
+wrapper();
+",
+                ),
+                expected_constants: vec![
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::CurrentClosure, vec![]),
+                        make(OpCodeType::GetLocal, vec![0]),
+                        make(OpCodeType::Constant, vec![0]),
+                        make(OpCodeType::Sub, vec![]),
+                        make(OpCodeType::Call, vec![1]),
+                        make(OpCodeType::ReturnValue, vec![]),
+                    ]),
+                    TestCaseResult::Integer(1),
+                    TestCaseResult::InstructionsVec(vec![
+                        make(OpCodeType::Closure, vec![1, 0]),
+                        make(OpCodeType::SetGlobal, vec![0]),
+                        make(OpCodeType::GetGlobal, vec![0]),
+                        make(OpCodeType::Constant, vec![2]),
+                        make(OpCodeType::Call, vec![1]),
+                        make(OpCodeType::Pop, vec![]),
+                    ]),
+                ],
+                expected_instructions: vec![
+                    make(OpCodeType::Closure, vec![3, 0]),
+                    make(OpCodeType::SetGlobal, vec![0]),
+                    make(OpCodeType::GetGlobal, vec![0]),
+                    make(OpCodeType::Call, vec![1]),
+                    make(OpCodeType::Pop, vec![]),
+                ],
+            },
+        ];
+
         run_compiler_tests(expected);
     }
 }

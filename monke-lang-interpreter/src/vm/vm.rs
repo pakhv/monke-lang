@@ -609,6 +609,17 @@ mod tests {
             assert!(byte_code.is_ok());
 
             let byte_code = byte_code.unwrap();
+
+            for (idx, constant) in byte_code.constants.iter().enumerate() {
+                println!("CONSTANT {idx} {constant}");
+
+                match constant {
+                    Object::Integer(int) => println!("Value: {}", int.value),
+                    Object::CompiledFunction(compiled_func) => println!("Instructions: {}", compiled_func.instructions),
+                    _ => ()
+                }
+            }
+
             let mut vm = Vm::new(byte_code);
 
             if let Err(err) = vm.run() {
@@ -1344,6 +1355,60 @@ closure();
 "
             ),
                 expected: TestCaseResult::Integer(99),
+            }
+        ];
+
+        run_vm_tests(expected);
+    }
+
+    #[test]
+    fn recursive_functions_test() {
+        let expected = vec![
+            TestCase {
+                input: String::from("
+let countDown = fn(x) {
+    if (x == 0) {
+        return 0;
+    } else {
+        countDown(x - 1);
+    }
+};
+
+countDown(1);
+"),
+                expected: TestCaseResult::Integer(0)
+            },
+            TestCase {
+                input: String::from("
+let countDown = fn(x) {
+    if (x == 0) {
+        return 0;
+    } else {
+        countDown(x - 1);
+    }
+};
+let wrapper = fn() {
+    countDown(1);
+};
+wrapper();
+"),
+                expected: TestCaseResult::Integer(0)
+            },
+            TestCase {
+                input: String::from("
+let wrapper = fn() {
+    let countDown = fn(x) {
+        if (x == 0) {
+            return 0;
+        } else {
+            countDown(x - 1);
+        }
+    };
+    countDown(1);
+};
+wrapper();
+"),
+                expected: TestCaseResult::Integer(0)
             }
         ];
 

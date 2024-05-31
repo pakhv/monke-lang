@@ -232,6 +232,7 @@ pub struct FunctionLiteral {
     pub token: Token,
     pub parameters: Vec<Identifier>,
     pub body: Rc<Statement>,
+    pub name: String,
 }
 
 impl Display for FunctionLiteral {
@@ -245,7 +246,7 @@ impl Display for FunctionLiteral {
             .reduce(|acc, cur| format!("{acc}, {cur}"))
             .unwrap_or(String::new());
 
-        buffer.push_str(&format!("({}){}", params, self.body));
+        buffer.push_str(&format!("{}({}){}", self.name, params, self.body));
 
         write!(f, "{}", buffer)
     }
