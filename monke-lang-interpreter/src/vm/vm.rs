@@ -1418,4 +1418,30 @@ wrapper();
 
         run_vm_tests(expected);
     }
+
+    #[test]
+    fn fibonacci_function_test() {
+        let expected = vec![TestCase {
+                input: String::from("
+let fibonacci = fn(x) {
+    if (x == 0) {
+        return 0;
+    } else {
+        if (x == 1) {
+            return 1;
+        } else {
+            fibonacci(x - 1) + fibonacci(x - 2);
+        }
+    }
+};
+
+fibonacci(15);
+"
+            ),
+                expected: TestCaseResult::Integer(610),
+            }
+        ];
+
+        run_vm_tests(expected);
+    }
 }
