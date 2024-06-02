@@ -8,6 +8,7 @@ pub enum SymbolScope {
     Local,
     Builtin,
     Free,
+    Function,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -122,6 +123,17 @@ impl SymbolTable {
         };
 
         self.store.insert(original.name, symbol.clone());
+        symbol
+    }
+
+    pub fn define_function_name(&mut self, name: String) -> Symbol {
+        let symbol = Symbol {
+            name: name.clone(),
+            index: 0,
+            scope: SymbolScope::Function,
+        };
+
+        self.store.insert(name, symbol.clone());
         symbol
     }
 }
@@ -519,5 +531,38 @@ mod test {
         for name in expected_unresolvable {
             assert!(second_local.borrow_mut().resolve(&name).is_none());
         }
+    }
+
+    #[test]
+    fn define_and_resolve_function_name_test() {
+        let global = SymbolTable::new();
+        global.borrow_mut().define_function_name(String::from("a"));
+
+        let expected = Symbol {
+            name: String::from("a"),
+            scope: SymbolScope::Function,
+            index: 0,
+        };
+
+        let result = global.borrow_mut().resolve(&expected.name);
+        assert!(result.is_some());
+        assert_eq!(expected, result.unwrap());
+    }
+
+    #[test]
+    fn shadowing_function_name_test() {
+        let global = SymbolTable::new();
+        global.borrow_mut().define_function_name(String::from("a"));
+        global.borrow_mut().define(String::from("a"));
+
+        let expected = Symbol {
+            name: String::from("a"),
+            scope: SymbolScope::Global,
+            index: 0,
+        };
+
+        let result = global.borrow_mut().resolve(&expected.name);
+        assert!(result.is_some());
+        assert_eq!(expected, result.unwrap());
     }
 }

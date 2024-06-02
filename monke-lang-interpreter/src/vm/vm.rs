@@ -270,6 +270,10 @@ impl Vm {
                     let current_closure = self.current_frame()?.cl.clone();
                     self.push(current_closure.free.get(free_idx as usize).ok_or(format!(""))?.clone())?;
                 }
+                OpCodeType::CurrentClosure => {
+                    let current_closure = self.current_frame()?.cl.clone();
+                    self.push(Object::Closure(current_closure))?;
+                }
                 _ => todo!(),
             }
         }

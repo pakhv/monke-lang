@@ -239,6 +239,12 @@ impl Compiler {
                 Expression::FunctionLiteral(func) => {
                     self.enter_scope();
 
+                    if func.name != "" {
+                        self.symbol_table
+                            .borrow_mut()
+                            .define_function_name(func.name.clone());
+                    }
+
                     for param in &func.parameters {
                         self.symbol_table
                             .borrow_mut()
@@ -541,6 +547,7 @@ impl Compiler {
             SymbolScope::Local => self.emit(OpCodeType::GetLocal, vec![value.index as i32])?,
             SymbolScope::Builtin => self.emit(OpCodeType::GetBuiltin, vec![value.index as i32])?,
             SymbolScope::Free => self.emit(OpCodeType::GetFree, vec![value.index as i32])?,
+            SymbolScope::Function => self.emit(OpCodeType::CurrentClosure, vec![])?,
         };
 
         Ok(())
@@ -1698,6 +1705,7 @@ countDown(1);
                         make(OpCodeType::Call, vec![1]),
                         make(OpCodeType::ReturnValue, vec![]),
                     ]),
+                    TestCaseResult::Integer(1),
                 ],
                 expected_instructions: vec![
                     make(OpCodeType::Closure, vec![1, 0]),
@@ -1731,18 +1739,18 @@ wrapper();
                     TestCaseResult::Integer(1),
                     TestCaseResult::InstructionsVec(vec![
                         make(OpCodeType::Closure, vec![1, 0]),
-                        make(OpCodeType::SetGlobal, vec![0]),
-                        make(OpCodeType::GetGlobal, vec![0]),
+                        make(OpCodeType::SetLocal, vec![0]),
+                        make(OpCodeType::GetLocal, vec![0]),
                         make(OpCodeType::Constant, vec![2]),
                         make(OpCodeType::Call, vec![1]),
-                        make(OpCodeType::Pop, vec![]),
+                        make(OpCodeType::ReturnValue, vec![]),
                     ]),
                 ],
                 expected_instructions: vec![
                     make(OpCodeType::Closure, vec![3, 0]),
                     make(OpCodeType::SetGlobal, vec![0]),
                     make(OpCodeType::GetGlobal, vec![0]),
-                    make(OpCodeType::Call, vec![1]),
+                    make(OpCodeType::Call, vec![0]),
                     make(OpCodeType::Pop, vec![]),
                 ],
             },
