@@ -1,7 +1,7 @@
 # monke-lang
 Monkey programming language Interpreter and Compiler implementation in Rust. 
 
-Written following the books ["Writing An Interpreter In Go"](https://interpreterbook.com/) and ["Writing A Compiler In Go"](https://compilerbook.com/) by Thorsten Ball (thx to Primeagen for recommendation, *works at Nextflix btw... rust mentioned*).
+Written following books ["Writing An Interpreter In Go"](https://interpreterbook.com/) and ["Writing A Compiler In Go"](https://compilerbook.com/) by Thorsten Ball (thx to Primeagen for recommendation, *works at Nextflix btw (not anymore)... rust mentioned*).
 
 - The `monke-lang` project consists of: lexer, parser, evaluator, compiler and virtual machine
 - The `interpreter-repl` project is a read-eval-print loop for trying an interpreter out
