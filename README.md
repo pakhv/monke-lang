@@ -9,7 +9,9 @@ Written following the books ["Writing An Interpreter In Go"](https://interpreter
 - The `benchmark` project lets you measure time it takes to calculate 35th Fibonacci number using interpreter and vm with compiler*
 
 *somehow I managed to make compiled code execution barely faster than evaluation with interpreter which is kinda impressive ![ICANT somebody help me](https://cdn.7tv.app/emote/60e7328e484ebd628b556b3e/2x.webp)
+
 **benchmark was ran in release mode (otherwise it would take as much time as learning every javascript framework that ever existed)
+
 ***`cargo run -r -- --engine=vm` and `cargo run -r -- --engine=eval` to run benchmark
 
 Monkey lang code example:
