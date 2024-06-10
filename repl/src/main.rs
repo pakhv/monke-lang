@@ -1,7 +1,8 @@
-use monke_lang_interpreter::{
-    evaluator::{environment::Environment, evaluator::eval, types::Object},
+use monke_lang::{
+    evaluator::{environment::Environment, evaluator::eval},
     lexer::lexer::Lexer,
     parser::parser::Parser,
+    types::Object,
 };
 use std::{
     cell::RefCell,

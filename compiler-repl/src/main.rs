@@ -1,4 +1,4 @@
-use monke_lang_interpreter::{
+use monke_lang::{
     compiler::{compiler::Compiler, symbol_table::SymbolTable},
     lexer::lexer::Lexer,
     parser::parser::Parser,

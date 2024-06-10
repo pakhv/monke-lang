@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc, str::FromStr, time::SystemTime};
 
 use clap::Parser;
-use monke_lang_interpreter::{
+use monke_lang::{
     compiler::compiler::Compiler,
     evaluator::{environment::Environment, evaluator::eval},
     lexer::lexer::Lexer,
@@ -46,14 +46,14 @@ let fibonacci = fn(x) {
     }
 };
 
-fibonacci(35);
+fibonacci(30);
 ";
 
 fn main() {
     let arguments = Arguments::parse();
 
     let lexer = Lexer::new(INPUT.to_string());
-    let mut parser = monke_lang_interpreter::parser::parser::Parser::new(lexer);
+    let mut parser = monke_lang::parser::parser::Parser::new(lexer);
 
     let program = parser.parse_program().unwrap();
 
