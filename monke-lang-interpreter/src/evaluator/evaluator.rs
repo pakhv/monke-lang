@@ -393,7 +393,7 @@ fn apply_function(
                 .borrow()
                 .evaluated_children
                 .first()
-                .ok_or(String::from(""))?
+                .ok_or(String::from("couldn't get first evaluated child"))?
                 .clone();
             let args = cur_node
                 .borrow()

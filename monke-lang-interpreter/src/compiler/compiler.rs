@@ -213,8 +213,10 @@ impl Compiler {
 
                     let jump_pos = self.emit(OpCodeType::Jump, vec![Self::KEKL_VALUE])?;
 
-                    let after_consequence_pos =
-                        self.current_instructions().ok_or(String::from(""))?.len() as i32;
+                    let after_consequence_pos = self
+                        .current_instructions()
+                        .ok_or(String::from("couldn't get current instructions"))?
+                        .len() as i32;
                     self.change_operand(jump_not_truthy_pos, after_consequence_pos)?;
 
                     match &if_expression.alternative {
@@ -230,8 +232,10 @@ impl Compiler {
                         }
                     }
 
-                    let after_alternative_pos =
-                        self.current_instructions().ok_or(String::from(""))?.len() as i32;
+                    let after_alternative_pos = self
+                        .current_instructions()
+                        .ok_or(String::from("couldn't get current instructions"))?
+                        .len() as i32;
                     self.change_operand(jump_pos, after_alternative_pos)?;
 
                     Ok(())
@@ -264,7 +268,9 @@ impl Compiler {
                     let free_symbols = self.symbol_table.borrow().free_symbols.clone();
                     let free_symbols_len = free_symbols.len();
                     let locals_num = self.symbol_table.borrow().definitions_num;
-                    let instructions = self.leave_scope().ok_or(String::from(""))?;
+                    let instructions = self
+                        .leave_scope()
+                        .ok_or(String::from("couldn't leave scope"))?;
 
                     for s in free_symbols {
                         self.load_symbol(s)?;
@@ -342,7 +348,9 @@ impl Compiler {
     pub fn byte_code(&self) -> MonkeyResult<ByteCode> {
         Ok(ByteCode {
             constants: self.constants.clone(),
-            instructions: self.current_instructions().ok_or(String::from(""))?,
+            instructions: self
+                .current_instructions()
+                .ok_or(String::from("couldn't get current instructions"))?,
         })
     }
 
@@ -504,7 +512,13 @@ impl Compiler {
 
         let outer_symbol_table = {
             let symbol_table = self.symbol_table.borrow();
-            Rc::clone(symbol_table.outer.as_ref().ok_or(format!("")).unwrap())
+            Rc::clone(
+                symbol_table
+                    .outer
+                    .as_ref()
+                    .ok_or(format!("couldn't get outer symbol table"))
+                    .unwrap(),
+            )
         };
 
         self.symbol_table = outer_symbol_table;
@@ -526,10 +540,10 @@ impl Compiler {
         let mut last_instructions = self
             .scopes
             .get(self.scope_index)
-            .ok_or(String::from(""))?
+            .ok_or(String::from("couldn't get scope"))?
             .last_instruction
             .clone()
-            .ok_or(String::from(""))?;
+            .ok_or(String::from("couldn't get last instructions"))?;
 
         self.replace_instructions(
             last_instructions.position,

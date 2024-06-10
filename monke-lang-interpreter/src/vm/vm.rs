@@ -228,47 +228,47 @@ impl Vm {
                     self.push(Object::Null(Null { }))?;
                 }
                 OpCodeType::SetLocal => {
-                    let local_index = *ins.get(ip + 1).ok_or(format!(""))?;
+                    let local_index = *ins.get(ip + 1).ok_or(format!("couldn't get local index"))?;
                     self.current_frame()?.ip += 1;
 
                     let base_pointer = self.current_frame()?.base_pointer;
                     self.stack[base_pointer + local_index as usize] = self.pop()?;
                 }
                 OpCodeType::GetLocal => {
-                    let local_index = *ins.get(ip + 1).ok_or(format!(""))?;
+                    let local_index = *ins.get(ip + 1).ok_or(format!("couldn't get local index"))?;
                     self.current_frame()?.ip += 1;
 
                     let base_pointer = self.current_frame()?.base_pointer;
-                    let local = self.stack.get(base_pointer + local_index as usize).ok_or(format!(""))?.clone();
+                    let local = self.stack.get(base_pointer + local_index as usize).ok_or(format!("couldn't get local variable"))?.clone();
                     self.push(local)?;
                 }
                 OpCodeType::GetBuiltin => {
-                    let builtin_index = *ins.get(ip + 1).ok_or(format!(""))?;
+                    let builtin_index = *ins.get(ip + 1).ok_or(format!("couldn't get builtin index"))?;
                     self.current_frame()?.ip += 1;
 
-                    let builtin_name = BUILTINS.get(builtin_index as usize).ok_or(format!(""))?;
-                    let builtin = get_builtin_function(builtin_name).ok_or(format!(""))?;
+                    let builtin_name = BUILTINS.get(builtin_index as usize).ok_or(format!("couldn't get builtin function name"))?;
+                    let builtin = get_builtin_function(builtin_name).ok_or(format!("couldn't get builtin function"))?;
                     self.push(builtin)?;
                 }
                 OpCodeType::Call => {
-                    let args_num = *ins.get(ip + 1).ok_or(format!(""))?;
+                    let args_num = *ins.get(ip + 1).ok_or(format!("couldn't get args number"))?;
                     self.current_frame()?.ip += 1;
 
                     self.execute_call(args_num as usize)?;
                 }
                 OpCodeType::Closure => {
-                    let const_index = read_u16(ins.get(ip + 1..).ok_or(format!(""))?);
-                    let free_num = *ins.get(ip + 3).ok_or(format!(""))?;
+                    let const_index = read_u16(ins.get(ip + 1..).ok_or(format!("couldn't get constant index"))?);
+                    let free_num = *ins.get(ip + 3).ok_or(format!("couldn't get free vars number"))?;
 
                     self.current_frame()?.ip += 3;
                     self.push_closure(const_index as usize, free_num as usize)?;
                 }
                 OpCodeType::GetFree => {
-                    let free_idx = *ins.get(ip + 1).ok_or(format!(""))?;
+                    let free_idx = *ins.get(ip + 1).ok_or(format!("couldn't get free index"))?;
                     self.current_frame()?.ip += 1;
 
                     let current_closure = self.current_frame()?.cl.clone();
-                    self.push(current_closure.free.get(free_idx as usize).ok_or(format!(""))?.clone())?;
+                    self.push(current_closure.free.get(free_idx as usize).ok_or(format!("couldn't free variable"))?.clone())?;
                 }
                 OpCodeType::CurrentClosure => {
                     let current_closure = self.current_frame()?.cl.clone();
@@ -472,7 +472,7 @@ impl Vm {
     }
 
     fn execute_call(&mut self, args_num: usize) -> MonkeyResult<()> {
-        let callee = self.stack.get(self.sp - 1 - args_num).ok_or(format!(""))?.clone();
+        let callee = self.stack.get(self.sp - 1 - args_num).ok_or(format!("couldn't get callee, while executing call"))?.clone();
 
         match callee {
             Object::Closure(closure) => self.call_closure(closure, args_num),
@@ -497,7 +497,7 @@ impl Vm {
     }
 
     fn call_builtin(&mut self, builtin: BuiltinFunction, args_num: usize) -> MonkeyResult<()> {
-        let args = self.stack.get(self.sp - args_num..self.sp).ok_or(format!(""))?;
+        let args = self.stack.get(self.sp - args_num..self.sp).ok_or(format!("couldn't get args while calling builtin"))?;
         let result = (builtin.0)(args.to_vec())?;
         self.sp = self.sp - args_num - 1;
 
@@ -507,14 +507,14 @@ impl Vm {
     }
 
     fn push_closure(&mut self, const_index: usize, free_num: usize) -> MonkeyResult<()> {
-        let constant = self.constants.get(const_index).ok_or(format!(""))?.clone();
+        let constant = self.constants.get(const_index).ok_or(format!("couldn't get constant, while pushing closure"))?.clone();
 
         match constant {
             Object::CompiledFunction(compiled_fn) => { 
-                let free = self.stack.get(self.sp - free_num..self.sp).ok_or(format!(""))?.iter().cloned().collect::<Vec<_>>();
+                let free = self.stack.get(self.sp - free_num..self.sp).ok_or(format!("couldn't get free vars while, pushing closure"))?.iter().cloned().collect::<Vec<_>>();
                 self.push(Object::Closure(Closure { func: compiled_fn, free })) 
             },
-            _ => Err(String::from(""))
+            actual => Err(format!("couldn't push closure, compiled function expected, but got \"{actual}\""))
         }
     }
 }
